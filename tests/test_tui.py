@@ -2245,10 +2245,10 @@ class TestAccessibility:
         assert "succeeded" in output
         assert "remaining" in output
 
-    def test_default_mode_no_legend_without_failures(
+    def test_default_mode_legend_shows_segments(
         self, tui_with_mocks: WorkflowMonitorTUI
     ) -> None:
-        """In default mode, legend is not shown when there are no failures."""
+        """In default mode, legend shows non-zero segments."""
         from snakesee.tui.accessibility import DEFAULT_CONFIG
 
         tui_with_mocks._accessibility_config = DEFAULT_CONFIG
@@ -2262,7 +2262,9 @@ class TestAccessibility:
         console = Console(file=buf, width=120, force_terminal=True)
         console.print(panel)
         output = buf.getvalue()
-        assert "succeeded" not in output
+        assert "succeeded" in output
+        assert "failed" not in output
+        assert "remaining" in output
 
     def test_toggle_accessible_mode_with_key(self, tui_with_mocks: WorkflowMonitorTUI) -> None:
         """Pressing 'a' toggles between default and accessible mode."""
