@@ -2245,14 +2245,17 @@ class TestAccessibility:
         assert "succeeded" in output
         assert "remaining" in output
 
-    def test_default_mode_legend_shows_segments(
-        self, tui_with_mocks: WorkflowMonitorTUI
-    ) -> None:
+    def test_default_mode_legend_shows_segments(self, tui_with_mocks: WorkflowMonitorTUI) -> None:
         """In default mode, legend shows non-zero segments."""
         from snakesee.tui.accessibility import DEFAULT_CONFIG
 
         tui_with_mocks._accessibility_config = DEFAULT_CONFIG
-        progress = make_workflow_progress(total_jobs=100, completed_jobs=50, failed_jobs=0)
+        progress = make_workflow_progress(
+            total_jobs=100,
+            completed_jobs=50,
+            failed_jobs=0,
+            running_jobs=[make_job_info(rule="align"), make_job_info(rule="sort")],
+        )
         panel = tui_with_mocks._make_progress_panel(progress, None)
         from io import StringIO
 
@@ -2264,6 +2267,7 @@ class TestAccessibility:
         output = buf.getvalue()
         assert "succeeded" in output
         assert "failed" not in output
+        assert "running" in output
         assert "remaining" in output
 
     def test_toggle_accessible_mode_with_key(self, tui_with_mocks: WorkflowMonitorTUI) -> None:

@@ -56,6 +56,7 @@ from snakesee.state.workflow_state import WorkflowState
 from snakesee.tui.accessibility import ACCESSIBLE_CONFIG
 from snakesee.tui.accessibility import DEFAULT_CONFIG
 from snakesee.tui.accessibility import AccessibilityConfig
+from snakesee.tui.accessibility import BarStyle
 from snakesee.validation import EventAccumulator
 from snakesee.validation import ValidationLogger
 from snakesee.validation import compare_states
@@ -1701,25 +1702,51 @@ class WorkflowMonitorTUI:
 
         return Panel(header_text, style="white on grey23", border_style=FG_BLUE, height=3)
 
+    def _in_flight_segment(self, progress: WorkflowProgress) -> tuple[int, BarStyle]:
+        """Return the count and style for the in-flight (yellow) progress segment.
+
+        The yellow segment shows jobs that are mid-flight. Which jobs those are depends on
+        whether the workflow is live or stopped:
+
+        - A live workflow reports its currently-executing jobs via ``running_jobs``.
+        - A stopped (``INCOMPLETE``) workflow has no live jobs, so we surface the jobs that
+          were in progress when it was interrupted (``incomplete_jobs_list``). This preserves
+          the post-mortem "which jobs were interrupted" distinction when browsing a dead run.
+
+        Args:
+            progress: Current workflow progress.
+
+        Returns:
+            A tuple of (number of in-flight jobs, the BarStyle to render them with).
+        """
+        config = self._accessibility_config
+        if progress.status == WorkflowStatus.INCOMPLETE:
+            return len(progress.incomplete_jobs_list), config.incomplete
+        return len(progress.running_jobs), config.running
+
     def _make_progress_bar(self, progress: WorkflowProgress, width: int = 40) -> Text:
-        """Create a colored progress bar showing succeeded/failed/running/pending portions."""
+        """Create a colored progress bar showing succeeded/failed/in-flight/pending portions."""
         total = max(1, progress.total_jobs)
         succeeded = progress.completed_jobs
         failed = progress.failed_jobs
-        running = len(progress.running_jobs)
+        in_flight, in_flight_style = self._in_flight_segment(progress)
         config = self._accessibility_config
 
-        # Calculate widths for each segment, distributing rounding remainders
-        succeeded_width = int((succeeded / total) * width)
-        failed_width = int((failed / total) * width)
-        running_width = int((running / total) * width)
-        pending_width = width - succeeded_width - failed_width - running_width
+        # Calculate widths for each segment. Clamp each to non-negative bounds within the
+        # remaining width so a transient counter skew (counts briefly exceeding total) can
+        # never produce a negative segment and under-render the bar.
+        succeeded_width = min(width, max(0, int((succeeded / total) * width)))
+        failed_width = min(width - succeeded_width, max(0, int((failed / total) * width)))
+        in_flight_width = min(
+            width - succeeded_width - failed_width, max(0, int((in_flight / total) * width))
+        )
+        pending_width = max(0, width - succeeded_width - failed_width - in_flight_width)
 
         # Build the bar with colored segments
         bar = Text()
         bar.append(config.succeeded.char * succeeded_width, style="green")
         bar.append(config.failed.char * failed_width, style="red")
-        bar.append(config.running.char * running_width, style="yellow")
+        bar.append(in_flight_style.char * in_flight_width, style="yellow")
         bar.append(config.remaining.char * pending_width, style="dim")
 
         return bar
@@ -1741,8 +1768,6 @@ class WorkflowMonitorTUI:
 
         # Create colored progress bar
         progress_bar = self._make_progress_bar(progress, width=bar_width)
-
-        running = len(progress.running_jobs)
 
         # Progress text line
         progress_line = Text()
@@ -1788,14 +1813,27 @@ class WorkflowMonitorTUI:
         legend = Text()
         legend_parts: list[tuple[str, str, str]] = []
         if progress.completed_jobs > 0:
-            legend_parts.append((config.succeeded.char, "green", f"{progress.completed_jobs} {config.succeeded.label}"))
+            legend_parts.append(
+                (
+                    config.succeeded.char,
+                    "green",
+                    f"{progress.completed_jobs} {config.succeeded.label}",
+                )
+            )
         if progress.failed_jobs > 0:
-            legend_parts.append((config.failed.char, "red", f"{progress.failed_jobs} {config.failed.label}"))
-        if running > 0:
-            legend_parts.append((config.running.char, "yellow", f"{running} {config.running.label}"))
-        pending = total - progress.completed_jobs - progress.failed_jobs - running
+            legend_parts.append(
+                (config.failed.char, "red", f"{progress.failed_jobs} {config.failed.label}")
+            )
+        in_flight, in_flight_style = self._in_flight_segment(progress)
+        if in_flight > 0:
+            legend_parts.append(
+                (in_flight_style.char, "yellow", f"{in_flight} {in_flight_style.label}")
+            )
+        pending = progress.pending_jobs
         if pending > 0:
-            legend_parts.append((config.remaining.char, "dim", f"{pending} {config.remaining.label}"))
+            legend_parts.append(
+                (config.remaining.char, "dim", f"{pending} {config.remaining.label}")
+            )
         if legend_parts:
             legend.append("  (", style="dim")
             for i, (symbol, style, label) in enumerate(legend_parts):

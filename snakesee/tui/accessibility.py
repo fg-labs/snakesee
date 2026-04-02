@@ -30,6 +30,7 @@ class AccessibilityConfig:
     Attributes:
         succeeded: Style for completed/succeeded jobs.
         failed: Style for failed jobs.
+        running: Style for currently running jobs.
         remaining: Style for remaining/pending jobs.
         incomplete: Style for incomplete jobs (workflow interrupted).
         show_legend: If True, always show the legend (not just on failure).
