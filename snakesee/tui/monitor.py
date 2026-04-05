@@ -273,6 +273,8 @@ class WorkflowMonitorTUI:
         self._selected_stats_index: int = 0  # Index into stats rows list
         self._pending_scroll_offset: int = 0  # Scroll offset for pending table
         self._stats_scroll_offset: int = 0  # Scroll offset for stats table
+        self._left_panel_count: int = 2  # Number of panels in left column
+        self._right_panel_count: int = 2  # Number of panels in right column
         self._log_scroll_offset: int = 0  # Lines to skip from end (0 = show latest)
         self._log_scroll_page_size: int = 10  # Lines to scroll with Ctrl+u/d
         self._cached_log_path: Path | None = None
@@ -1640,6 +1642,20 @@ class WorkflowMonitorTUI:
             border_style="cyan",
         )
 
+    def _max_visible_rows(self, num_panels: int) -> int:
+        """Compute max visible table rows based on terminal height and layout.
+
+        In FULL layout, the body area (terminal - fixed chrome) is split equally
+        among panels. Each panel loses ~3 lines for border + header row.
+        Returns at least 3 rows so tables are always usable.
+        """
+        height = self.console.height or 24
+        # Fixed chrome: header(3) + progress(6) + summary_footer(3) + footer(3) = 15
+        body_height = height - 15
+        panel_height = body_height // max(1, num_panels)
+        # Panel border (2) + table header row (1) = 3 lines of overhead
+        return max(3, panel_height - 3)
+
     def _make_header(self, progress: WorkflowProgress) -> Panel:
         """Create the header panel with workflow path and status."""
         status_styles = {
@@ -2034,7 +2050,8 @@ class WorkflowMonitorTUI:
             job_data = self._sort_running_job_data(job_data)
 
         # Virtual scrolling for running jobs table
-        max_visible = 10
+        num_panels = 1 if self._layout_mode == LayoutMode.COMPACT else self._left_panel_count
+        max_visible = self._max_visible_rows(num_panels)
         is_selecting_running = self._job_selection_mode and self._log_source == "running"
 
         if is_selecting_running and job_data:
@@ -2185,7 +2202,7 @@ class WorkflowMonitorTUI:
         header_style = "bold green on dark_blue" if is_sorting else "bold green"
 
         # Virtual scrolling for completions table
-        max_visible = 8
+        max_visible = self._max_visible_rows(self._right_panel_count)
         is_selecting = self._job_selection_mode and self._log_source == "completions"
 
         # Use heap selection when only displaying top N (not scrolling)
@@ -2588,7 +2605,7 @@ class WorkflowMonitorTUI:
             rules_list.sort(key=lambda x: x[1], reverse=True)
 
         # Virtual scrolling
-        max_visible = 10
+        max_visible = self._max_visible_rows(self._left_panel_count)
         total_rules = len(rules_list)
 
         if is_selecting and rules_list:
@@ -2832,7 +2849,7 @@ class WorkflowMonitorTUI:
                 all_rows.append((rule, "-", stats))
 
         # Virtual scrolling
-        max_visible = 8
+        max_visible = self._max_visible_rows(self._right_panel_count)
         total_rows = len(all_rows)
 
         if is_selecting and all_rows:
@@ -3004,6 +3021,10 @@ class WorkflowMonitorTUI:
             # Check if we have incomplete jobs to show
             has_failed = bool(progress.failed_jobs_list)
             has_incomplete = bool(progress.incomplete_jobs_list)
+
+            # Track panel counts for dynamic row sizing
+            self._left_panel_count = 3 if has_incomplete else 2
+            self._right_panel_count = 3 if has_failed else 2
 
             # Left column: running jobs, incomplete jobs (if any), pending jobs
             if has_incomplete:
