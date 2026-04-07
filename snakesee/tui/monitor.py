@@ -1645,16 +1645,24 @@ class WorkflowMonitorTUI:
     def _max_visible_rows(self, num_panels: int) -> int:
         """Compute max visible table rows based on terminal height and layout.
 
-        In FULL layout, the body area (terminal - fixed chrome) is split equally
-        among panels. Each panel loses ~3 lines for border + header row.
+        Body area (terminal - fixed chrome) is split equally among panels.
+        Each panel loses ~3 lines for border + header row.
         Returns at least 3 rows so tables are always usable.
         """
         height = self.console.height or 24
-        # Fixed chrome: header(3) + progress(6) + summary_footer(3) + footer(3) = 15
-        body_height = height - 15
+        # FULL: header(3) + progress(6) + summary_footer(3) + footer(3) = 15
+        # COMPACT/MINIMAL: header(3) + progress(6) + footer(3) = 12
+        fixed_chrome = 15 if self._layout_mode == LayoutMode.FULL else 12
+        body_height = height - fixed_chrome
         panel_height = body_height // max(1, num_panels)
         # Panel border (2) + table header row (1) = 3 lines of overhead
         return max(3, panel_height - 3)
+
+    def _update_panel_counts(self, progress: WorkflowProgress) -> None:
+        """Update panel counts based on current workflow state."""
+        if self._layout_mode == LayoutMode.FULL:
+            self._left_panel_count = 3 if progress.incomplete_jobs_list else 2
+            self._right_panel_count = 3 if progress.failed_jobs_list else 2
 
     def _make_header(self, progress: WorkflowProgress) -> Panel:
         """Create the header panel with workflow path and status."""
@@ -2956,6 +2964,7 @@ class WorkflowMonitorTUI:
         estimate: TimeEstimate | None,
     ) -> Layout:
         """Create the complete TUI layout."""
+        self._update_panel_counts(progress)
         layout = Layout()
 
         # Easter egg takes over the whole screen
@@ -3021,10 +3030,6 @@ class WorkflowMonitorTUI:
             # Check if we have incomplete jobs to show
             has_failed = bool(progress.failed_jobs_list)
             has_incomplete = bool(progress.incomplete_jobs_list)
-
-            # Track panel counts for dynamic row sizing
-            self._left_panel_count = 3 if has_incomplete else 2
-            self._right_panel_count = 3 if has_failed else 2
 
             # Left column: running jobs, incomplete jobs (if any), pending jobs
             if has_incomplete:
