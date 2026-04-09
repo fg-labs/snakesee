@@ -2421,3 +2421,13 @@ class TestMaxVisibleRows:
         # height=24, chrome=15, body=9, per panel=4, minus overhead=1 → floor 3
         result = tui._max_visible_rows(2)
         assert result == 3
+
+    def test_minimal_layout_matches_compact_chrome(self, tui: WorkflowMonitorTUI) -> None:
+        """MINIMAL layout uses the same chrome math as COMPACT."""
+        from snakesee.tui.monitor import LayoutMode
+
+        tui._layout_mode = LayoutMode.MINIMAL
+        minimal_rows = tui._max_visible_rows(2)
+        tui._layout_mode = LayoutMode.COMPACT
+        compact_rows = tui._max_visible_rows(2)
+        assert minimal_rows == compact_rows
