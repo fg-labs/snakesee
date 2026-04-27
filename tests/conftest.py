@@ -4,9 +4,6 @@ import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
-from unittest.mock import patch
 
 import pytest
 
@@ -17,9 +14,6 @@ from snakesee.models import TimeEstimate
 from snakesee.models import WorkflowProgress
 from snakesee.models import WorkflowStatus
 from tests.db_helpers import create_metadata_schema
-
-if TYPE_CHECKING:
-    from snakesee.tui import WorkflowMonitorTUI
 
 # =============================================================================
 # Factory Functions for Test Data
@@ -114,58 +108,6 @@ def make_snakesee_event(
         total_jobs=total_jobs,
         completed_jobs=completed_jobs,
     )
-
-
-# =============================================================================
-# TUI-specific Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def mock_console() -> MagicMock:
-    """Create a mock Rich Console with standard dimensions."""
-    console = MagicMock()
-    console.width = 120
-    console.height = 40
-    console.is_terminal = True
-    return console
-
-
-@pytest.fixture
-def mock_event_reader() -> MagicMock:
-    """Create a mock EventReader."""
-    reader = MagicMock()
-    reader.read_new_events.return_value = []
-    return reader
-
-
-@pytest.fixture
-def mock_estimator() -> MagicMock:
-    """Create a mock TimeEstimator."""
-    estimator = MagicMock()
-    estimator.estimate_remaining.return_value = make_time_estimate()
-    estimator.get_rule_estimate.return_value = (100.0, 0.8)
-    estimator._infer_pending_rules.return_value = {"align": 5, "sort": 3}
-    estimator.current_rules = None  # No filtering by default
-    return estimator
-
-
-@pytest.fixture
-def tui_with_mocks(tmp_path: Path, mock_console: MagicMock) -> "WorkflowMonitorTUI":
-    """Create a TUI instance with mocked dependencies for testing."""
-    from snakesee.tui import WorkflowMonitorTUI
-
-    # Create minimal directory structure
-    (tmp_path / ".snakemake" / "log").mkdir(parents=True)
-
-    with patch("snakesee.tui.monitor.Console", return_value=mock_console):
-        tui = WorkflowMonitorTUI(workflow_dir=tmp_path)
-        # Disable file-dependent initialization for isolated testing
-        tui._event_reader = None
-        tui._log_reader = None
-        tui._estimator = None
-        tui._validation_logger = None
-        return tui
 
 
 # =============================================================================

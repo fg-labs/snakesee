@@ -1,43 +1,32 @@
-"""Terminal User Interface for Snakemake workflow monitoring.
+"""Terminal User Interface for Snakemake workflow monitoring (Textual).
 
-This package provides a Rich-based TUI for monitoring Snakemake workflows:
+This package provides a Textual-based TUI for monitoring Snakemake workflows.
+The main entry point is `SnakeseeApp`, which is also exported as
+`WorkflowMonitorTUI` for backward compatibility with existing callers.
 
-- WorkflowMonitorTUI: Main TUI class with full-screen monitoring
-- LayoutMode: Available layout modes (full/compact/minimal)
-
-The TUI provides:
-- Real-time progress tracking with time estimates
-- Running, completed, and failed job display
-- Log file viewing with scrolling
-- Keyboard-driven filtering and navigation
-
-Usage:
-    from snakesee.tui import WorkflowMonitorTUI
-
-    tui = WorkflowMonitorTUI(workflow_dir=Path("."))
-    tui.run()
-
-The module structure is:
-- monitor.py: Main WorkflowMonitorTUI class and LayoutMode enum
-
-Future refactoring notes:
-The monitor.py could be further split into MVC components:
-- model.py: State and data management
-- view.py: Rich console rendering (panel creation methods)
-- controller.py: Keyboard and refresh handling
+Module structure:
+- app.py: SnakeseeApp (the main Textual application) and bindings/reactives
+- data_source.py: WorkflowDataSource (pure-data layer: polling, estimator,
+  event/log readers, filter/sort helpers, log tail, tool-progress cache)
+- renderables.py: Rich renderables (header, progress, summary, help, easter egg)
+- tables.py: DataTable row builders and sort helpers
+- screens.py: Modal screens (HelpScreen, EasterEggScreen, JobLogScreen)
+- accessibility.py: Visual encoding configs for colorblind users
 """
 
-# Re-export public API for backward compatibility
+from snakesee.constants import DEFAULT_REFRESH_RATE
+from snakesee.constants import MAX_REFRESH_RATE
+from snakesee.constants import MIN_REFRESH_RATE
 from snakesee.tui.accessibility import ACCESSIBLE_CONFIG
 from snakesee.tui.accessibility import DEFAULT_CONFIG
 from snakesee.tui.accessibility import AccessibilityConfig
-from snakesee.tui.monitor import DEFAULT_REFRESH_RATE
-from snakesee.tui.monitor import FG_BLUE
-from snakesee.tui.monitor import FG_GREEN
-from snakesee.tui.monitor import MAX_REFRESH_RATE
-from snakesee.tui.monitor import MIN_REFRESH_RATE
-from snakesee.tui.monitor import LayoutMode
-from snakesee.tui.monitor import WorkflowMonitorTUI
+from snakesee.tui.app import LayoutMode
+from snakesee.tui.app import SnakeseeApp
+from snakesee.tui.renderables import FG_BLUE
+from snakesee.tui.renderables import FG_GREEN
+
+# Backward-compat alias: callers (CLI, tests) construct WorkflowMonitorTUI(...)
+WorkflowMonitorTUI = SnakeseeApp
 
 __all__ = [
     "ACCESSIBLE_CONFIG",
@@ -49,5 +38,6 @@ __all__ = [
     "MAX_REFRESH_RATE",
     "MIN_REFRESH_RATE",
     "LayoutMode",
+    "SnakeseeApp",
     "WorkflowMonitorTUI",
 ]

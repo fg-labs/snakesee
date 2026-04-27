@@ -15,7 +15,7 @@
 
 **A terminal UI for monitoring Snakemake workflows.**
 
-snakesee provides a rich TUI dashboard for passively monitoring Snakemake workflows. It reads directly from the `.snakemake/` directory, requiring no special flags or configuration when running Snakemake.
+snakesee provides a Textual TUI dashboard for passively monitoring Snakemake workflows. It reads directly from the `.snakemake/` directory, requiring no special flags or configuration when running Snakemake.
 
 <p>
 <a href="https://fulcrumgenomics.com">
@@ -37,7 +37,7 @@ snakesee provides a rich TUI dashboard for passively monitoring Snakemake workfl
 - **Zero configuration** - Works on any existing workflow without modification
 - **Historical browsing** - Navigate through past workflow executions
 - **Time estimation** - Predicts remaining time from historical data
-- **Rich TUI** - Vim-style keyboard controls, filtering, and sorting
+- **Textual TUI** - Vim-style keyboard controls, filtering, and sorting
 - **Multiple layouts** - Full, compact, and minimal display modes
 
 ## Why snakesee?
