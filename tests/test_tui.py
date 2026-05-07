@@ -2347,3 +2347,87 @@ class TestAccessibility:
         # Should show both incomplete and remaining counts
         assert "5 incomplete" in output
         assert "45 remaining" in output
+
+
+class TestMaxVisibleRows:
+    """Tests for _max_visible_rows dynamic row calculation."""
+
+    @pytest.fixture
+    def tui(self, tmp_path: Path) -> WorkflowMonitorTUI:
+        """Create a TUI with a mocked console of known dimensions."""
+        snakemake_dir = tmp_path / ".snakemake"
+        snakemake_dir.mkdir()
+        (snakemake_dir / "log").mkdir()
+        mock_console = MagicMock()
+        mock_console.width = 120
+        mock_console.height = 50
+        mock_console.is_terminal = True
+        with patch("snakesee.tui.monitor.Console", return_value=mock_console):
+            return WorkflowMonitorTUI(workflow_dir=tmp_path)
+
+    def test_full_layout_two_panels(self, tui: WorkflowMonitorTUI) -> None:
+        """Standard terminal, FULL layout, 2 panels per column."""
+        from snakesee.tui.monitor import LayoutMode
+
+        tui._layout_mode = LayoutMode.FULL
+        # height=50, chrome=15, body=35, per panel=17, minus overhead=14
+        result = tui._max_visible_rows(2)
+        assert result == 14
+
+    def test_full_layout_three_panels(self, tui: WorkflowMonitorTUI) -> None:
+        """Standard terminal, FULL layout, 3 panels per column."""
+        from snakesee.tui.monitor import LayoutMode
+
+        tui._layout_mode = LayoutMode.FULL
+        # height=50, chrome=15, body=35, per panel=11, minus overhead=8
+        result = tui._max_visible_rows(3)
+        assert result == 8
+
+    def test_compact_layout_one_panel(self, tui: WorkflowMonitorTUI) -> None:
+        """COMPACT layout uses less chrome (no summary_footer), giving more rows."""
+        from snakesee.tui.monitor import LayoutMode
+
+        tui._layout_mode = LayoutMode.COMPACT
+        # height=50, chrome=12, body=38, per panel=38, minus overhead=35
+        result = tui._max_visible_rows(1)
+        assert result == 35
+
+    def test_compact_vs_full_gives_more_rows(self, tui: WorkflowMonitorTUI) -> None:
+        """COMPACT layout yields more rows than FULL for the same panel count."""
+        from snakesee.tui.monitor import LayoutMode
+
+        tui._layout_mode = LayoutMode.COMPACT
+        compact_rows = tui._max_visible_rows(2)
+        tui._layout_mode = LayoutMode.FULL
+        full_rows = tui._max_visible_rows(2)
+        assert compact_rows > full_rows
+
+    def test_small_terminal_floor(self, tui: WorkflowMonitorTUI) -> None:
+        """Very small terminal returns minimum of 3 rows."""
+        from snakesee.tui.monitor import LayoutMode
+
+        tui.console.height = 10
+        tui._layout_mode = LayoutMode.FULL
+        # height=10, chrome=15, body=-5 → floor of 3
+        result = tui._max_visible_rows(2)
+        assert result == 3
+
+    def test_none_height_uses_default(self, tui: WorkflowMonitorTUI) -> None:
+        """None console height falls back to 24."""
+        from snakesee.tui.monitor import LayoutMode
+
+        tui.console.height = None
+        tui._layout_mode = LayoutMode.FULL
+        # height=24, chrome=15, body=9, per panel=4, minus overhead=1 → floor 3
+        result = tui._max_visible_rows(2)
+        assert result == 3
+
+    def test_minimal_layout_matches_compact_chrome(self, tui: WorkflowMonitorTUI) -> None:
+        """MINIMAL layout uses the same chrome math as COMPACT."""
+        from snakesee.tui.monitor import LayoutMode
+
+        tui._layout_mode = LayoutMode.MINIMAL
+        minimal_rows = tui._max_visible_rows(2)
+        tui._layout_mode = LayoutMode.COMPACT
+        compact_rows = tui._max_visible_rows(2)
+        assert minimal_rows == compact_rows
