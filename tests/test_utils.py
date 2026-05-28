@@ -1,10 +1,15 @@
 """Tests for utility functions."""
 
 import json
+import time
 from pathlib import Path
 
+import pytest
+
 from snakesee.utils import MetadataCache
+from snakesee.utils import _ScanCache
 from snakesee.utils import get_metadata_cache
+from snakesee.utils import get_scan_cache
 from snakesee.utils import iterate_metadata_files
 from snakesee.utils import json_loads
 from snakesee.utils import safe_file_size
@@ -232,6 +237,12 @@ class TestGetMetadataCache:
 class TestIterateMetadataFiles:
     """Tests for iterate_metadata_files function."""
 
+    @pytest.fixture(autouse=True)
+    def _clear_global_caches(self) -> None:
+        """Clear global caches before each test to avoid cross-test contamination."""
+        get_scan_cache().clear()
+        get_metadata_cache().clear()
+
     def test_empty_directory(self, tmp_path: Path) -> None:
         """Test iterating empty metadata directory."""
         metadata_dir = tmp_path / "metadata"
@@ -273,8 +284,6 @@ class TestIterateMetadataFiles:
 
     def test_sorts_by_mtime_newest_first(self, tmp_path: Path) -> None:
         """Test files are sorted by mtime, newest first by default."""
-        import time
-
         metadata_dir = tmp_path / "metadata"
         metadata_dir.mkdir()
 
@@ -290,8 +299,6 @@ class TestIterateMetadataFiles:
 
     def test_sorts_oldest_first_when_requested(self, tmp_path: Path) -> None:
         """Test files sorted oldest first when newest_first=False."""
-        import time
-
         metadata_dir = tmp_path / "metadata"
         metadata_dir.mkdir()
 
@@ -354,3 +361,150 @@ class TestIterateMetadataFiles:
         # With use_cache=False, should not populate cache
         list(iterate_metadata_files(metadata_dir, use_cache=False))
         assert len(get_metadata_cache()) == 0
+
+
+class TestScanCache:
+    """Tests for _ScanCache class."""
+
+    @pytest.fixture
+    def cache(self) -> _ScanCache:
+        """Create a fresh _ScanCache instance."""
+        return _ScanCache()
+
+    def test_first_call_performs_full_scan(self, tmp_path: Path, cache: _ScanCache) -> None:
+        """First call scans the directory and returns all files."""
+        d = tmp_path / "meta"
+        d.mkdir()
+        (d / "a.json").write_text("{}")
+        (d / "b.json").write_text("{}")
+
+        result = cache.get_files(d)
+        assert len(result) == 2
+        names = {f.path.name for f in result}
+        assert names == {"a.json", "b.json"}
+
+    def test_no_change_returns_cached(self, tmp_path: Path, cache: _ScanCache) -> None:
+        """Subsequent call with no changes returns the same tuple object."""
+        d = tmp_path / "meta"
+        d.mkdir()
+        (d / "a.json").write_text("{}")
+
+        first = cache.get_files(d)
+        second = cache.get_files(d)
+        # Same object — no re-allocation
+        assert first is second
+
+    def test_adding_file_triggers_rescan(self, tmp_path: Path, cache: _ScanCache) -> None:
+        """Adding a file to a directory triggers rescan of that directory."""
+        d = tmp_path / "meta"
+        d.mkdir()
+        (d / "a.json").write_text("{}")
+
+        result1 = cache.get_files(d)
+        assert len(result1) == 1
+
+        # Add a file — directory mtime changes
+        time.sleep(0.05)
+        (d / "b.json").write_text("{}")
+
+        result2 = cache.get_files(d)
+        assert len(result2) == 2
+        names = {f.path.name for f in result2}
+        assert names == {"a.json", "b.json"}
+
+    def test_removing_file_triggers_rescan(self, tmp_path: Path, cache: _ScanCache) -> None:
+        """Removing a file from a directory triggers rescan of that directory."""
+        d = tmp_path / "meta"
+        d.mkdir()
+        (d / "a.json").write_text("{}")
+        (d / "b.json").write_text("{}")
+
+        result1 = cache.get_files(d)
+        assert len(result1) == 2
+
+        # Remove a file — directory mtime changes
+        time.sleep(0.05)
+        (d / "a.json").unlink()
+
+        result2 = cache.get_files(d)
+        assert len(result2) == 1
+        assert result2[0].path.name == "b.json"
+
+    def test_removing_directory_removes_its_files(self, tmp_path: Path, cache: _ScanCache) -> None:
+        """Removing an entire subdirectory removes its files from the cache."""
+        d = tmp_path / "meta"
+        sub = d / "sub"
+        sub.mkdir(parents=True)
+        (d / "top.json").write_text("{}")
+        (sub / "nested.json").write_text("{}")
+
+        result1 = cache.get_files(d)
+        assert len(result1) == 2
+
+        # Remove subdirectory
+        import shutil
+
+        time.sleep(0.05)
+        shutil.rmtree(sub)
+
+        result2 = cache.get_files(d)
+        assert len(result2) == 1
+        assert result2[0].path.name == "top.json"
+
+    def test_different_root_triggers_full_rescan(self, tmp_path: Path, cache: _ScanCache) -> None:
+        """Calling get_files with a different directory triggers a full rescan."""
+        d1 = tmp_path / "dir1"
+        d2 = tmp_path / "dir2"
+        d1.mkdir()
+        d2.mkdir()
+        (d1 / "a.json").write_text("{}")
+        (d2 / "b.json").write_text("{}")
+
+        result1 = cache.get_files(d1)
+        assert len(result1) == 1
+        assert result1[0].path.name == "a.json"
+
+        result2 = cache.get_files(d2)
+        assert len(result2) == 1
+        assert result2[0].path.name == "b.json"
+
+    def test_clear_resets_state(self, tmp_path: Path, cache: _ScanCache) -> None:
+        """clear() resets all cached state."""
+        d = tmp_path / "meta"
+        d.mkdir()
+        (d / "a.json").write_text("{}")
+
+        cache.get_files(d)
+        cache.clear()
+
+        # After clear, internal state is empty
+        assert cache._files == ()
+        assert cache._dir_mtimes == {}
+        assert cache._root is None
+
+    def test_subdirectory_files_preserved_on_parent_change(
+        self, tmp_path: Path, cache: _ScanCache
+    ) -> None:
+        """Files in unchanged subdirectories are preserved when parent changes."""
+        d = tmp_path / "meta"
+        sub = d / "sub"
+        sub.mkdir(parents=True)
+        (d / "top.json").write_text("{}")
+        (sub / "nested.json").write_text("{}")
+
+        result1 = cache.get_files(d)
+        assert len(result1) == 2
+
+        # Change only the parent directory (add a file)
+        time.sleep(0.05)
+        (d / "new.json").write_text("{}")
+
+        result2 = cache.get_files(d)
+        assert len(result2) == 3
+        names = {f.path.name for f in result2}
+        assert "nested.json" in names  # subdirectory file preserved
+
+    @pytest.fixture(autouse=True)
+    def _clear_global_scan_cache(self) -> None:
+        """Clear the global scan cache before each test to avoid flaky tests."""
+        get_scan_cache().clear()
