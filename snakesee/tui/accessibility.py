@@ -30,6 +30,7 @@ class AccessibilityConfig:
     Attributes:
         succeeded: Style for completed/succeeded jobs.
         failed: Style for failed jobs.
+        running: Style for currently running jobs.
         remaining: Style for remaining/pending jobs.
         incomplete: Style for incomplete jobs (workflow interrupted).
         show_legend: If True, always show the legend (not just on failure).
@@ -37,6 +38,7 @@ class AccessibilityConfig:
 
     succeeded: BarStyle
     failed: BarStyle
+    running: BarStyle
     remaining: BarStyle
     incomplete: BarStyle
     show_legend: bool
@@ -45,6 +47,7 @@ class AccessibilityConfig:
 DEFAULT_CONFIG = AccessibilityConfig(
     succeeded=BarStyle(char="\u2588", label="succeeded"),
     failed=BarStyle(char="\u2588", label="failed"),
+    running=BarStyle(char="\u2588", label="running"),
     remaining=BarStyle(char="\u2591", label="remaining"),
     incomplete=BarStyle(char="\u2591", label="incomplete"),
     show_legend=False,
@@ -53,6 +56,7 @@ DEFAULT_CONFIG = AccessibilityConfig(
 ACCESSIBLE_CONFIG = AccessibilityConfig(
     succeeded=BarStyle(char="=", label="succeeded"),
     failed=BarStyle(char="X", label="failed"),
+    running=BarStyle(char=">", label="running"),
     remaining=BarStyle(char="\u00b7", label="remaining"),
     incomplete=BarStyle(char="?", label="incomplete"),
     show_legend=True,
