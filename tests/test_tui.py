@@ -2437,3 +2437,113 @@ class TestMaxVisibleRows:
         tui._layout_mode = LayoutMode.COMPACT
         compact_rows = tui._max_visible_rows(2)
         assert minimal_rows == compact_rows
+
+
+class TestPendingJobsBeforeCompletion:
+    """Tests that pending panel works before any job completes."""
+
+    def test_total_jobs_inferred_from_expected_counts(
+        self, tui_with_mocks: "WorkflowMonitorTUI"
+    ) -> None:
+        """total_jobs should be inferred from expected_job_counts when progress line
+        hasn't appeared yet (total_jobs == 0)."""
+        from unittest.mock import MagicMock
+
+        tui = tui_with_mocks
+        estimator = MagicMock()
+        estimator.expected_job_counts = {"align": 5, "sort": 3}
+        estimator.estimate_remaining.return_value = None
+        tui._estimator = estimator
+
+        # Simulate progress with total_jobs=0 (no progress line yet)
+        progress = make_workflow_progress(total_jobs=0, completed_jobs=0)
+
+        with patch.object(tui, "_read_new_events", return_value=[]):
+            with patch("snakesee.tui.monitor.parse_workflow_state", return_value=progress):
+                result_progress, _ = tui._poll_state()
+
+        assert result_progress.total_jobs == 8  # 5 + 3
+        assert result_progress.pending_jobs == 8  # all pending, none running/completed
+
+    def test_pending_count_accounts_for_running_jobs(
+        self, tui_with_mocks: "WorkflowMonitorTUI"
+    ) -> None:
+        """pending_jobs should decrease as running_jobs increases, even before first
+        completion."""
+        from unittest.mock import MagicMock
+
+        tui = tui_with_mocks
+        estimator = MagicMock()
+        estimator.expected_job_counts = {"align": 5, "sort": 3}
+        estimator.estimate_remaining.return_value = None
+        tui._estimator = estimator
+
+        running = [make_job_info(rule="align", job_id="1"), make_job_info(rule="align", job_id="2")]
+        progress = make_workflow_progress(total_jobs=0, completed_jobs=0, running_jobs=running)
+
+        with patch.object(tui, "_read_new_events", return_value=[]):
+            with patch("snakesee.tui.monitor.parse_workflow_state", return_value=progress):
+                result_progress, _ = tui._poll_state()
+
+        assert result_progress.total_jobs == 8
+        assert result_progress.pending_jobs == 6  # 8 - 2 running
+
+    def test_no_inference_without_estimator(self, tui_with_mocks: "WorkflowMonitorTUI") -> None:
+        """total_jobs stays 0 when there's no estimator to infer from."""
+        tui = tui_with_mocks
+        tui._estimator = None
+
+        progress = make_workflow_progress(total_jobs=0, completed_jobs=0)
+
+        with patch.object(tui, "_read_new_events", return_value=[]):
+            with patch("snakesee.tui.monitor.parse_workflow_state", return_value=progress):
+                result_progress, _ = tui._poll_state()
+
+        assert result_progress.total_jobs == 0
+
+    def test_no_override_when_progress_line_exists(
+        self, tui_with_mocks: "WorkflowMonitorTUI"
+    ) -> None:
+        """total_jobs from the progress line takes precedence over inferred value."""
+        from unittest.mock import MagicMock
+
+        tui = tui_with_mocks
+        estimator = MagicMock()
+        estimator.expected_job_counts = {"align": 5, "sort": 3}
+        estimator.estimate_remaining.return_value = None
+        tui._estimator = estimator
+
+        # total_jobs=10 from progress line (already parsed a completion)
+        progress = make_workflow_progress(total_jobs=10, completed_jobs=1)
+
+        with patch.object(tui, "_read_new_events", return_value=[]):
+            with patch("snakesee.tui.monitor.parse_workflow_state", return_value=progress):
+                result_progress, _ = tui._poll_state()
+
+        # Should keep the progress line value, not override with 8
+        assert result_progress.total_jobs == 10
+
+    def test_no_inference_in_historical_view(self, tui_with_mocks: "WorkflowMonitorTUI") -> None:
+        """total_jobs is not inferred when browsing a historical run (log index > 0).
+
+        expected_job_counts is parsed from the latest log, so inferring it onto an
+        older run's progress would show the wrong total.
+        """
+        from unittest.mock import MagicMock
+
+        tui = tui_with_mocks
+        estimator = MagicMock()
+        estimator.expected_job_counts = {"align": 5, "sort": 3}
+        estimator.estimate_remaining.return_value = None
+        tui._estimator = estimator
+        # Browsing a historical run, not the latest/live one.
+        tui._current_log_index = 1
+
+        progress = make_workflow_progress(total_jobs=0, completed_jobs=0)
+
+        with patch.object(tui, "_read_new_events", return_value=[]):
+            with patch("snakesee.tui.monitor.parse_workflow_state", return_value=progress):
+                result_progress, _ = tui._poll_state()
+
+        # No inference in historical view; total_jobs stays 0.
+        assert result_progress.total_jobs == 0

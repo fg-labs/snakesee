@@ -503,10 +503,10 @@ class WorkflowMonitorTUI:
         if current_rules:
             self._estimator.current_rules = current_rules
 
-        # Parse job counts for accurate pending job inference
-        job_counts = parse_job_stats_counts_from_log(log_path)
-        if job_counts:
-            self._estimator.expected_job_counts = job_counts
+        # Parse job counts for accurate pending job inference. Always replace
+        # (clearing to None when the latest log has no Job stats yet) so counts
+        # from a previous run can't linger and be inferred onto a new run.
+        self._estimator.expected_job_counts = parse_job_stats_counts_from_log(log_path) or None
 
         # Parse "Provided cores: N" for definitive parallelism info
         cores = parse_cores_from_log(log_path)
@@ -3134,6 +3134,27 @@ class WorkflowMonitorTUI:
             cutoff_time=self._cutoff_time,
             log_reader=reader,
         )
+
+        # Infer total_jobs from the Job stats table when the progress line
+        # hasn't appeared yet (it only appears after the first completion).
+        # This lets the pending panel show correct counts immediately.
+        #
+        # Only infer for the latest/live run (log index 0). expected_job_counts is
+        # parsed from the latest log, so inferring while browsing a historical run
+        # would graft the live run's counts onto the wrong run's progress.
+        if (
+            progress.total_jobs == 0
+            and self._estimator is not None
+            and self._current_log_index == 0
+        ):
+            if not self._estimator.expected_job_counts:
+                self._init_current_rules_from_log()
+            if self._estimator.expected_job_counts:
+                from dataclasses import replace
+
+                inferred_total = sum(self._estimator.expected_job_counts.values())
+                if inferred_total > 0:
+                    progress = replace(progress, total_jobs=inferred_total)
 
         # Sync log reader's completed jobs to registry when events aren't available
         # This ensures the registry is the single source of truth regardless of
