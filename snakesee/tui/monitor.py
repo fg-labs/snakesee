@@ -8,6 +8,7 @@ import sys
 import time
 from collections.abc import Iterable
 from datetime import datetime
+from datetime import timedelta
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -215,6 +216,7 @@ class WorkflowMonitorTUI:
                 Defaults to DEFAULT_CONFIG (standard block characters).
         """
         self.workflow_dir = workflow_dir
+        self._resolved_workflow_dir = str(workflow_dir.resolve())
         self.refresh_rate = refresh_rate
         self.use_estimation = use_estimation
         self.profile_path = profile_path
@@ -1249,10 +1251,8 @@ class WorkflowMonitorTUI:
         Table mode: Navigate between jobs in running/completions tables.
         Press Enter to view a job's log, Esc to exit to normal mode.
         """
-        # Help key works in table mode
-        if key == "?":
-            self._show_help = True
-            self._force_refresh = True
+        # Toggle keys (?, p, e, w, a, r, Ctrl+r) work in table mode
+        if self._handle_toggle_key(key):
             return False
 
         # Sort keys work in table mode
@@ -1450,10 +1450,8 @@ class WorkflowMonitorTUI:
         Log mode: Scroll through the selected job's log file.
         Press Esc to return to table navigation mode.
         """
-        # Help key works in log mode
-        if key == "?":
-            self._show_help = True
-            self._force_refresh = True
+        # Toggle keys (?, p, e, w, a, r, Ctrl+r) work in log mode
+        if self._handle_toggle_key(key):
             return False
 
         # Escape - exit log viewing mode, return to table navigation
@@ -1636,10 +1634,12 @@ class WorkflowMonitorTUI:
         help_text.add_row("Ctrl+f/b", "Scroll down/up full page")
         help_text.add_row("Esc", "Return to table navigation")
 
+        from snakesee import __version__
+
         return Panel(
             help_text,
             title="[bold]Keyboard Shortcuts[/bold]",
-            subtitle="Press any key to close",
+            subtitle=f"Press any key to close [dim]│ snakesee v{__version__}[/dim]",
             border_style="cyan",
         )
 
@@ -1681,7 +1681,13 @@ class WorkflowMonitorTUI:
         header_text.append(" │ ", style="dim")
         header_text.append("Snakemake Monitor", style="bold white")
         header_text.append("  │  ", style="dim")
-        header_text.append(str(self.workflow_dir), style="dim")
+        # Truncate long paths to avoid crowding out status fields
+        resolved = self._resolved_workflow_dir
+        max_path_len = max(20, (self.console.width or 80) - 80)
+        if len(resolved) > max_path_len:
+            # Keep first component + ... + last components that fit
+            resolved = resolved[: max_path_len // 2 - 1] + "…" + resolved[-(max_path_len // 2) :]
+        header_text.append(resolved, style="dim")
         header_text.append("  │  Status: ")
         header_text.append(progress.status.value.upper(), style=style)
 
@@ -1794,9 +1800,14 @@ class WorkflowMonitorTUI:
             eta_parts.append(f"ETA: {estimate.format_eta()}")
 
             if estimate.seconds_remaining < float("inf") and estimate.seconds_remaining > 0:
-                completion_time = datetime.now().timestamp() + estimate.seconds_remaining
-                completion_str = datetime.fromtimestamp(completion_time).strftime("%H:%M:%S")
-                eta_parts.append(f"(completion: {completion_str})")
+                now = datetime.now().astimezone()
+                completion_dt = now + timedelta(seconds=estimate.seconds_remaining)
+                tz_name = completion_dt.strftime("%Z") or "local"
+                if completion_dt.date() == now.date():
+                    completion_str = completion_dt.strftime("%H:%M:%S")
+                else:
+                    completion_str = completion_dt.strftime("%Y-%m-%d %H:%M:%S")
+                eta_parts.append(f"({completion_str} {tz_name})")
 
             # Show estimation method and inferred cores for transparency
             method_info = estimate.method

@@ -1639,6 +1639,95 @@ class TestJobSelectionModeKeyHandling:
         # Job index should NOT have changed (key was consumed by help close)
         assert tui._selected_job_index == 5
 
+    def test_toggle_keys_work_in_table_mode(self, tui: WorkflowMonitorTUI) -> None:
+        """Test that toggle keys (p, e, w, a, r, Ctrl+r) work in table navigation mode."""
+        tui._job_selection_mode = True
+        tui._log_source = "running"
+
+        # p toggles pause
+        assert not tui._paused
+        tui._handle_key("p")
+        assert tui._paused
+        assert tui._job_selection_mode is True  # type: ignore[unreachable]  # stays in table mode
+
+        # e toggles estimation
+        initial_est = tui.use_estimation
+        tui._handle_key("e")
+        assert tui.use_estimation != initial_est
+        assert tui._job_selection_mode is True
+
+        # w toggles wildcard conditioning
+        initial_wc = tui._use_wildcard_conditioning
+        tui._handle_key("w")
+        assert tui._use_wildcard_conditioning != initial_wc
+        assert tui._job_selection_mode is True
+
+        # a toggles accessibility
+        from snakesee.tui.accessibility import ACCESSIBLE_CONFIG
+        from snakesee.tui.accessibility import DEFAULT_CONFIG
+
+        assert tui._accessibility_config == DEFAULT_CONFIG
+        tui._handle_key("a")
+        assert tui._accessibility_config == ACCESSIBLE_CONFIG
+        assert tui._job_selection_mode is True
+
+        # r triggers force refresh without leaving table mode
+        tui._force_refresh = False
+        tui._handle_key("r")
+        assert tui._force_refresh is True
+        assert tui._job_selection_mode is True
+
+        # Ctrl+r triggers hard refresh without leaving table mode
+        tui._force_refresh = False
+        tui._handle_key("\x12")
+        assert tui._force_refresh is True
+        assert tui._job_selection_mode is True
+
+    def test_toggle_keys_work_in_log_viewing_mode(self, tui: WorkflowMonitorTUI) -> None:
+        """Test that toggle keys (p, e, w, a, r, Ctrl+r) work in log viewing mode."""
+        tui._job_selection_mode = True
+        tui._log_viewing_mode = True
+        tui._log_source = "running"
+
+        # p toggles pause
+        assert not tui._paused
+        tui._handle_key("p")
+        assert tui._paused
+        assert tui._log_viewing_mode is True  # type: ignore[unreachable]  # stays in log mode
+
+        # w toggles wildcard conditioning
+        initial_wc = tui._use_wildcard_conditioning
+        tui._handle_key("w")
+        assert tui._use_wildcard_conditioning != initial_wc
+        assert tui._log_viewing_mode is True
+
+        # e toggles estimation
+        initial_est = tui.use_estimation
+        tui._handle_key("e")
+        assert tui.use_estimation != initial_est
+        assert tui._log_viewing_mode is True
+
+        # a toggles accessibility
+        from snakesee.tui.accessibility import ACCESSIBLE_CONFIG
+        from snakesee.tui.accessibility import DEFAULT_CONFIG
+
+        assert tui._accessibility_config == DEFAULT_CONFIG
+        tui._handle_key("a")
+        assert tui._accessibility_config == ACCESSIBLE_CONFIG
+        assert tui._log_viewing_mode is True
+
+        # r triggers force refresh without leaving log mode
+        tui._force_refresh = False
+        tui._handle_key("r")
+        assert tui._force_refresh is True
+        assert tui._log_viewing_mode is True
+
+        # Ctrl+r triggers hard refresh without leaving log mode
+        tui._force_refresh = False
+        tui._handle_key("\x12")
+        assert tui._force_refresh is True
+        assert tui._log_viewing_mode is True
+
     def test_g_jumps_to_first_job_in_running(self, tui: WorkflowMonitorTUI) -> None:
         """Test that 'g' jumps to first job in running table."""
         tui._job_selection_mode = True
