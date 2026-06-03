@@ -8,16 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from snakesee.demo.runner import _build_snakemake_argv
 from snakesee.demo.runner import _cache_root
-from snakesee.demo.runner import _copy_workflow
+from snakesee.demo.runner import build_snakemake_argv
+from snakesee.demo.runner import copy_workflow
 from snakesee.demo.runner import run_demo
 
 
 class TestSnakefileDryRun:
     def test_dry_run_succeeds(self, tmp_path: Path) -> None:
         """The bundled Snakefile parses cleanly and resolves the DAG."""
-        _copy_workflow(tmp_path)
+        copy_workflow(tmp_path)
         snakemake = shutil.which("snakemake")
         if snakemake is None:
             pytest.skip("snakemake executable not on PATH")
@@ -38,23 +38,23 @@ class TestSnakefileDryRun:
 
 class TestArgvBuilder:
     def test_argv_includes_logger_when_available(self) -> None:
-        argv = _build_snakemake_argv(cores=2, sleep_min=1, sleep_max=3, use_logger_plugin=True)
+        argv = build_snakemake_argv(cores=2, sleep_min=1, sleep_max=3, use_logger_plugin=True)
         assert "--logger" in argv
         assert "snakesee" in argv
         assert "--cores" in argv
         assert "2" in argv
 
     def test_argv_omits_logger_when_unavailable(self) -> None:
-        argv = _build_snakemake_argv(cores=2, sleep_min=1, sleep_max=3, use_logger_plugin=False)
+        argv = build_snakemake_argv(cores=2, sleep_min=1, sleep_max=3, use_logger_plugin=False)
         assert "--logger" not in argv
 
     def test_argv_passes_sleep_config(self) -> None:
-        argv = _build_snakemake_argv(cores=4, sleep_min=2, sleep_max=8, use_logger_plugin=False)
+        argv = build_snakemake_argv(cores=4, sleep_min=2, sleep_max=8, use_logger_plugin=False)
         assert "sleep_min=2" in argv
         assert "sleep_max=8" in argv
 
     def test_argv_target_precedes_config(self) -> None:
-        argv = _build_snakemake_argv(cores=2, sleep_min=1, sleep_max=3, use_logger_plugin=False)
+        argv = build_snakemake_argv(cores=2, sleep_min=1, sleep_max=3, use_logger_plugin=False)
         assert "all" in argv
         assert argv.index("all") < argv.index("--config")
 

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from snakesee.models import WorkflowProgress
 from snakesee.tui.app import SnakeseeApp
 
 
@@ -19,4 +20,16 @@ async def test_app_init_without_estimation(snakemake_dir: Path, tmp_path: Path) 
     """SnakeseeApp accepts use_estimation=False without errors."""
     app = SnakeseeApp(workflow_dir=tmp_path, use_estimation=False)
     async with app.run_test() as pilot:
+        await pilot.press("q")
+
+
+async def test_last_poll_exposes_latest_snapshot(snakemake_dir: Path, tmp_path: Path) -> None:
+    """`last_poll` exposes the (progress, estimate) snapshot taken by the refresh cycle."""
+    app = SnakeseeApp(workflow_dir=tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        poll = app.last_poll
+        assert poll is not None
+        progress, _estimate = poll
+        assert isinstance(progress, WorkflowProgress)
         await pilot.press("q")

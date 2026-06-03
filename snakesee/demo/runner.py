@@ -61,8 +61,12 @@ def _prune_old_runs(cache_root: Path, keep: int) -> None:
         shutil.rmtree(old, ignore_errors=True)
 
 
-def _copy_workflow(target: Path) -> None:
-    """Copy the bundled Snakefile and inputs/ into target."""
+def copy_workflow(target: Path) -> None:
+    """Copy the bundled demo Snakefile and inputs/ into a target directory.
+
+    Args:
+        target: Directory to populate; created (with parents) if it does not exist.
+    """
     target.mkdir(parents=True, exist_ok=True)
     (target / "inputs").mkdir(exist_ok=True)
     snakefile = importlib.resources.files("snakesee.demo") / "Snakefile"
@@ -73,16 +77,28 @@ def _copy_workflow(target: Path) -> None:
         target.joinpath("inputs", f"{sample}.txt").write_text(src.read_text())
 
 
-def _logger_plugin_available() -> bool:
+def logger_plugin_available() -> bool:
+    """Return True if the snakesee realtime logger plugin is importable."""
     return find_spec(_LOGGER_PLUGIN_MODULE) is not None
 
 
-def _build_snakemake_argv(
+def build_snakemake_argv(
     cores: int,
     sleep_min: int,
     sleep_max: int,
     use_logger_plugin: bool,
 ) -> list[str]:
+    """Build the Snakemake command line for the demo workflow.
+
+    Args:
+        cores: Number of cores for `snakemake --cores`.
+        sleep_min: Minimum per-job sleep in seconds, passed via `--config`.
+        sleep_max: Maximum per-job sleep in seconds, passed via `--config`.
+        use_logger_plugin: Whether to add `--logger snakesee` for realtime events.
+
+    Returns:
+        The argv list, with the bare `snakemake` program name at index 0.
+    """
     argv = ["snakemake", "all", "--cores", str(cores), "--keep-going"]
     if use_logger_plugin:
         argv += ["--logger", "snakesee"]
@@ -144,10 +160,10 @@ def run_demo(
     _prune_old_runs(cache_root, keep_runs)
 
     demo_dir = cache_root / _utc_timestamp()
-    _copy_workflow(demo_dir)
+    copy_workflow(demo_dir)
 
     sleep_min, sleep_max = _DURATION_RANGES[duration]
-    use_plugin = _logger_plugin_available()
+    use_plugin = logger_plugin_available()
     if not use_plugin:
         print(
             "[snakesee demo] snakemake-logger-plugin-snakesee not installed; "
@@ -155,7 +171,7 @@ def run_demo(
             file=sys.stderr,
         )
 
-    argv = _build_snakemake_argv(cores, sleep_min, sleep_max, use_plugin)
+    argv = build_snakemake_argv(cores, sleep_min, sleep_max, use_plugin)
 
     snakemake = shutil.which(argv[0])
     if snakemake is None:

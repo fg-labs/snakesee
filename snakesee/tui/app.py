@@ -151,6 +151,16 @@ class SnakeseeApp(App[None]):
     _refresh_timer: Timer | None = None
     _last_poll: tuple[WorkflowProgress, TimeEstimate | None] | None = None
 
+    @property
+    def last_poll(self) -> tuple[WorkflowProgress, TimeEstimate | None] | None:
+        """The most recent (progress, estimate) snapshot taken by the refresh cycle.
+
+        Read-only accessor for external tooling (e.g. the docs screenshot
+        generator) so it does not have to reach into the private attribute.
+        Returns None until the first refresh has polled the data source.
+        """
+        return self._last_poll
+
     def action_cycle_layout(self) -> None:
         """Cycle to the next layout mode."""
         modes = list(LayoutMode)
