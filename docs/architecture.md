@@ -19,9 +19,15 @@ snakesee/
 ├── validation.py        # State comparison utilities
 ├── variance.py          # Variance calculation for confidence
 │
-├── tui/                 # Terminal user interface (Rich-based)
+├── tui/                 # Terminal user interface (Textual-based)
 │   ├── __init__.py      # TUI module exports
-│   └── monitor.py       # WorkflowMonitorTUI class
+│   ├── app.py           # SnakeseeApp — main Textual App class
+│   ├── app.tcss         # CSS layout and theming
+│   ├── data_source.py   # WorkflowDataSource — pure-data layer
+│   ├── renderables.py   # Rich renderables (header, progress bar, footer)
+│   ├── tables.py        # DataTable row builders
+│   ├── screens.py       # Modal screens (help, easter egg, job log)
+│   └── accessibility.py # Colorblind-accessible rendering helpers
 │
 ├── parser/              # Log parsing and metadata extraction
 │   ├── __init__.py      # Public parser API
@@ -180,14 +186,6 @@ The `parser/core.py` could be split into focused modules:
 
 The `parser/__init__.py` already acts as a facade, so this split would be
 backward-compatible.
-
-### tui/monitor.py Split (Optional)
-The `tui/monitor.py` could be further split using MVC pattern:
-
-1. **tui/model.py**: State and data management
-2. **tui/view.py**: Rich console rendering
-3. **tui/controller.py**: Keyboard and refresh handling
-4. **tui/__init__.py**: WorkflowMonitorTUI facade
 
 ## Security Considerations
 

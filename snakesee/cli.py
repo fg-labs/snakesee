@@ -336,6 +336,44 @@ def log_handler_path() -> None:
     print(LOG_HANDLER_SCRIPT)
 
 
+def demo(
+    *,
+    cores: int = 4,
+    duration: Literal["short", "medium", "long"] = "short",
+    keep_runs: int = 5,
+    no_tui: bool = False,
+    clean: bool = False,
+) -> None:
+    """
+    Run a bundled demo workflow under Snakemake and watch it with the TUI.
+
+    Useful for trying snakesee without setting up a real workflow. The demo
+    is a small fake-bioinformatics DAG over 5 samples (~26 jobs) with one
+    intentional failure on sample E to exercise the failed-jobs panel.
+
+    Args:
+        cores: Number of cores forwarded to `snakemake --cores`.
+        duration: Per-job sleep preset. `short` ≈ 1.5min total wall time,
+                  `medium` ≈ 5min, `long` ≈ 15min.
+        keep_runs: Maximum demo dirs to keep in the cache (~/.cache/snakesee/demo/).
+                   Older are pruned at startup.
+        no_tui: Run Snakemake to completion without launching the TUI. Used for
+                CI and scripting.
+        clean: Wipe all demo dirs in the cache and exit without launching anything.
+    """
+    from snakesee.demo import run_demo
+
+    rc = run_demo(
+        cores=cores,
+        duration=duration,
+        keep_runs=keep_runs,
+        no_tui=no_tui,
+        clean=clean,
+    )
+    if rc != 0:
+        sys.exit(rc)
+
+
 def main() -> None:
     """Entry point for the snakesee CLI."""
     defopt.run(
@@ -345,6 +383,7 @@ def main() -> None:
             "profile-export": profile_export,
             "profile-show": profile_show,
             "log-handler-path": log_handler_path,
+            "demo": demo,
         },
         no_negated_flags=True,
     )

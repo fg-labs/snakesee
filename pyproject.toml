@@ -28,10 +28,10 @@ dependencies = [
     "defopt>=6.4.0",
     "snakemake>=8.0.0",
     "orjson>=3.9.0",
+    "textual>=0.80.0",
+    "rich-pixels>=3.0.1",
+    "pillow>=10.0.0",
 ]
-
-[project.optional-dependencies]
-logo = ["rich-pixels>=3.0.1", "pillow>=10.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/nh13/snakesee"
@@ -52,6 +52,9 @@ dev = [
     "pre-commit>=4.5.1",
     "hypothesis>=6.148.8",
     "pytest-benchmark>=5.2.3",
+    "pytest-asyncio>=1.3.0",
+    "snakemake-logger-plugin-snakesee",
+    "pytest-timeout>=2.4.0",
 ]
 docs = [
     "mkdocs-autorefs>=0.5.0",
@@ -68,9 +71,23 @@ docs = [
 [tool.uv]
 default-groups = ["dev", "docs"]
 
+[tool.uv.workspace]
+members = [
+    "snakemake-logger-plugin-snakesee",
+]
+
+[tool.uv.sources]
+snakemake-logger-plugin-snakesee = { workspace = true, editable = true }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["snakesee"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"snakesee/demo/Snakefile" = "snakesee/demo/Snakefile"
 
 [tool.ruff]
 line-length    = 100
@@ -117,6 +134,7 @@ fail_under = 80
 [tool.pytest.ini_options]
 minversion = "7.4"
 testpaths  = "tests"
+asyncio_mode = "auto"
 addopts    = [
     "--verbosity=2",
     "-r=sx",

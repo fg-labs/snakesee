@@ -1,0 +1,40 @@
+Screen {
+    layout: vertical;
+}
+
+#header {
+    height: 3;
+}
+
+#progress {
+    height: 8;
+}
+
+#summary {
+    height: 3;
+}
+
+#body {
+    height: 1fr;
+}
+
+#left, #right {
+    height: 100%;
+}
+
+DataTable {
+    height: 1fr;
+}
+
+SnakeseeApp.-minimal #body { display: none; }
+SnakeseeApp.-minimal #summary { display: none; }
+
+SnakeseeApp.-compact #completions,
+SnakeseeApp.-compact #pending,
+SnakeseeApp.-compact #failed,
+SnakeseeApp.-compact #incomplete,
+SnakeseeApp.-compact #stats { display: none; }
+SnakeseeApp.-compact #right { display: none; }
+
+#filter { dock: bottom; height: 1; display: none; }
+#filter.-active { display: block; }

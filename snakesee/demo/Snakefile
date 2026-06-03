@@ -1,0 +1,107 @@
+"""Demo workflow for `snakesee demo`.
+
+A small fake-bioinformatics DAG with sleep-based rules over 5 samples.
+The `dedup` rule fails on sample E intentionally so the failed-jobs panel populates.
+"""
+
+import random
+
+SAMPLES = ["A", "B", "C", "D", "E"]
+
+# Sleep range scales with --duration via --config sleep_min/sleep_max.
+SLEEP_MIN = int(config.get("sleep_min", 1))
+SLEEP_MAX = int(config.get("sleep_max", 5))
+
+def _sleep_shell(rule_seed: int) -> str:
+    """Return a shell snippet that sleeps a random N seconds (deterministic per rule)."""
+    rng = random.Random(rule_seed)
+    secs = rng.randint(SLEEP_MIN, SLEEP_MAX)
+    return f"sleep {secs}"
+
+
+rule all:
+    """Top-level target requiring the final report."""
+    input:
+        "output/report/summary.txt",
+
+
+rule download:
+    """Pretend-fetch a sample input file."""
+    input:
+        "inputs/{sample}.txt",
+    output:
+        "output/download/{sample}.txt",
+    log:
+        "logs/download.{sample}.log",
+    shell:
+        f"({_sleep_shell(1)} && cp {{input}} {{output}}) &> {{log}}"
+
+
+rule qc:
+    """Pretend-run QC over a downloaded sample."""
+    input:
+        "output/download/{sample}.txt",
+    output:
+        "output/qc/{sample}.txt",
+    log:
+        "logs/qc.{sample}.log",
+    shell:
+        f"({_sleep_shell(2)} && touch {{output}}) &> {{log}}"
+
+
+rule align:
+    """Pretend-align a QC'd sample to a reference."""
+    input:
+        "output/qc/{sample}.txt",
+    output:
+        "output/align/{sample}.txt",
+    log:
+        "logs/align.{sample}.log",
+    shell:
+        f"({_sleep_shell(3)} && touch {{output}}) &> {{log}}"
+
+
+def _dedup_cmd(wildcards):
+    """Return the shell command for the dedup rule, parameterized by sample."""
+    if wildcards.sample == "E":
+        # Intentional failure to exercise the failed-jobs panel.
+        return "sleep 2 && exit 1"
+    return _sleep_shell(4)
+
+
+rule dedup:
+    """Pretend-deduplicate alignments. Sample E intentionally fails."""
+    input:
+        "output/align/{sample}.txt",
+    output:
+        "output/dedup/{sample}.txt",
+    log:
+        "logs/dedup.{sample}.log",
+    params:
+        cmd=_dedup_cmd,
+    shell:
+        "({params.cmd} && touch {output}) &> {log}"
+
+
+rule call_variants:
+    """Pretend-call variants from a deduplicated BAM."""
+    input:
+        "output/dedup/{sample}.txt",
+    output:
+        "output/call_variants/{sample}.txt",
+    log:
+        "logs/call_variants.{sample}.log",
+    shell:
+        f"({_sleep_shell(5)} && touch {{output}}) &> {{log}}"
+
+
+rule report:
+    """Aggregate per-sample variant calls into a final report."""
+    input:
+        expand("output/call_variants/{sample}.txt", sample=SAMPLES),
+    output:
+        "output/report/summary.txt",
+    log:
+        "logs/report.log",
+    shell:
+        f"({_sleep_shell(6)} && touch {{output}}) &> {{log}}"
