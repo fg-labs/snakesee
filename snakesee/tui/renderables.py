@@ -57,6 +57,14 @@ def make_remote_job_info(job: "JobInfo") -> list[str]:
     label = job.executor or "remote"
     lines = [f"{label} job: {job.external_jobid}"]
 
+    if job.queue is not None:
+        lines.append(f"  queue:   {job.queue}")
+
+    # Queue wait is distinct from run time: it's how long the job waited for a node.
+    queue_wait = job.queue_wait
+    if queue_wait is not None:
+        lines.append(f"  queued for: {format_duration(queue_wait)}")
+
     console = batch_console_url(job.external_jobid, region=job.region)
     if console is not None:
         lines.append(f"  console: {console}")

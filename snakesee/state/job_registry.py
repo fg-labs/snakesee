@@ -53,6 +53,7 @@ class Job:
         region: Cloud region, used to build console deep links (if known).
         log_stream: Backend log stream identifier (e.g. CloudWatch stream), if known.
         queued_at: Epoch seconds the job entered the remote queue, if known.
+        queue: The remote queue / compute environment the job was routed to, if known.
     """
 
     key: str
@@ -70,6 +71,7 @@ class Job:
     region: str | None = None
     log_stream: str | None = None
     queued_at: float | None = None
+    queue: str | None = None
     stats_recorded: bool = False
 
     @property
@@ -121,6 +123,7 @@ class Job:
             region=self.region,
             log_stream=self.log_stream,
             queued_at=self.queued_at,
+            queue=self.queue,
         )
 
     @classmethod
@@ -156,6 +159,7 @@ class Job:
             region=job_info.region,
             log_stream=job_info.log_stream,
             queued_at=job_info.queued_at,
+            queue=job_info.queue,
         )
 
 
@@ -491,6 +495,8 @@ class JobRegistry:
             job.region = event.region
         if event.log_stream is not None:
             job.log_stream = event.log_stream
+        if event.queue is not None:
+            job.queue = event.queue
         if event.queued_at is not None and job.queued_at is None:
             job.queued_at = event.queued_at
 

@@ -54,6 +54,7 @@ class JobInfo:
         queued_at: Epoch seconds the job entered the remote queue, if known. For a
             remote job, start_time is the true execution start, so the difference
             is the queue wait.
+        queue: The remote queue / compute environment the job was routed to, if known.
     """
 
     rule: str
@@ -70,6 +71,7 @@ class JobInfo:
     region: str | None = None
     log_stream: str | None = None
     queued_at: float | None = None
+    queue: str | None = None
 
     @property
     def queue_wait(self) -> float | None:

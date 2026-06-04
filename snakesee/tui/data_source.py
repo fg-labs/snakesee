@@ -865,6 +865,13 @@ class WorkflowDataSource:
             wildcards=event.wildcards_dict,
         )
 
+        # For remote jobs, record the queue wait separately from execution time.
+        # The registry job carries queued_at/start_time/queue (the event may not).
+        if job is not None and job.queue_wait is not None:
+            self._workflow_state.rules.record_queue_wait(
+                event.rule_name, job.queue_wait, queue=job.queue
+            )
+
         # Mark as recorded
         if job is not None:
             job.stats_recorded = True
@@ -1064,6 +1071,7 @@ class WorkflowDataSource:
             executor=job.executor or registry_job.executor,
             region=job.region or registry_job.region,
             log_stream=job.log_stream or registry_job.log_stream,
+            queue=job.queue or registry_job.queue,
             queued_at=job.queued_at if job.queued_at is not None else registry_job.queued_at,
         )
 
@@ -1098,6 +1106,13 @@ class WorkflowDataSource:
                 wildcards=dict(registry_job.wildcards) if registry_job.wildcards else None,
                 input_size=registry_job.input_size,
             )
+
+            # For remote jobs, record the queue wait separately from execution time.
+            queue_wait = registry_job.queue_wait
+            if queue_wait is not None:
+                self._workflow_state.rules.record_queue_wait(
+                    registry_job.rule, queue_wait, queue=registry_job.queue
+                )
 
             # Mark as recorded for deduplication
             registry_job.stats_recorded = True

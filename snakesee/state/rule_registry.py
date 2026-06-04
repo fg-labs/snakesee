@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from dataclasses import field
+from statistics import median
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,6 +25,13 @@ def _make_empty_rule_stats(rule: str = "") -> RuleTimingStats:
     from snakesee.models import RuleTimingStats
 
     return RuleTimingStats(rule=rule)
+
+
+def _median(values: list[float] | None) -> float | None:
+    """Median of a list of values, or None if empty/None."""
+    if not values:
+        return None
+    return float(median(values))
 
 
 def _make_combination_key(wildcards: dict[str, str] | None, threads: int | None) -> str | None:
@@ -199,6 +207,11 @@ class RuleRegistry:
         self._rules: dict[str, RuleStatistics] = {}
         self._global_mean_cache: float | None = None
         self._cache_valid: bool = False
+        # Queue wait (remote executors only) is tracked separately from execution
+        # duration: a job's time spent queued before a node picks it up is a
+        # property of the queue/cluster, not the rule's compute cost.
+        self._queue_waits_by_rule: dict[str, list[float]] = {}
+        self._queue_waits_by_queue: dict[str, list[float]] = {}
 
     def __len__(self) -> int:
         """Return number of rules in registry."""
@@ -274,6 +287,47 @@ class RuleRegistry:
             wildcards=job.wildcards if job.wildcards else None,
             input_size=job.input_size,
         )
+
+    def record_queue_wait(self, rule: str, wait: float, queue: str | None = None) -> None:
+        """Record the queue wait for a completed remote job.
+
+        Queue wait is the time a job spent queued on a remote executor before a
+        node began executing it. It is kept separate from execution duration so
+        time estimates aren't inflated by queue contention.
+
+        Args:
+            rule: Rule name.
+            wait: Seconds spent queued. Non-positive values (e.g. clock skew) are
+                ignored.
+            queue: Optional queue/compute-environment name the job was routed to.
+        """
+        if wait <= 0:
+            return
+        with self._lock:
+            self._queue_waits_by_rule.setdefault(rule, []).append(wait)
+            if queue is not None:
+                self._queue_waits_by_queue.setdefault(queue, []).append(wait)
+
+    def queue_wait_for_rule(self, rule: str) -> float | None:
+        """Median observed queue wait for a rule, or None if no data."""
+        with self._lock:
+            return _median(self._queue_waits_by_rule.get(rule))
+
+    def queue_wait_count_for_rule(self, rule: str) -> int:
+        """Number of queue-wait samples recorded for a rule (0 if none)."""
+        with self._lock:
+            return len(self._queue_waits_by_rule.get(rule, []))
+
+    def queue_wait_for_queue(self, queue: str) -> float | None:
+        """Median observed queue wait for a named queue, or None if no data."""
+        with self._lock:
+            return _median(self._queue_waits_by_queue.get(queue))
+
+    def overall_queue_wait(self) -> float | None:
+        """Median queue wait across all rules, or None if no data."""
+        with self._lock:
+            all_waits = [w for waits in self._queue_waits_by_rule.values() for w in waits]
+            return _median(all_waits)
 
     def global_mean_duration(self) -> float:
         """Get global mean duration across all rules.

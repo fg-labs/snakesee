@@ -51,6 +51,21 @@ class TestMakeRemoteJobInfo:
         job = JobInfo(rule="align", job_id="1", external_jobid="abc123")
         assert make_remote_job_info(job)[0] == "remote job: abc123"
 
+    def test_shows_queue_and_queue_wait(self) -> None:
+        """Queue name and queue wait (start_time - queued_at) are surfaced."""
+        job = JobInfo(
+            rule="align",
+            job_id="1",
+            external_jobid="abc123",
+            executor="aws-batch",
+            queue="graviton-spot",
+            queued_at=100.0,
+            start_time=142.0,  # 42s queue wait
+        )
+        lines = make_remote_job_info(job)
+        assert any("queue:" in line and "graviton-spot" in line for line in lines)
+        assert any("queued for:" in line for line in lines)
+
 
 class TestIncompleteJobCarriesExternalId:
     """The incomplete->JobInfo wiring preserves external_jobid (parser.core)."""
