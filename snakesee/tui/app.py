@@ -33,6 +33,7 @@ from snakesee.tui.accessibility import DEFAULT_CONFIG
 from snakesee.tui.accessibility import AccessibilityConfig
 from snakesee.tui.data_source import SortTableName
 from snakesee.tui.data_source import WorkflowDataSource
+from snakesee.tui.renderables import format_cost
 from snakesee.tui.renderables import make_header
 from snakesee.tui.renderables import make_progress_panel
 from snakesee.tui.renderables import make_summary_footer
@@ -654,6 +655,14 @@ class SnakeseeApp(App[None]):
             sort_column=self.sort_column,
             sort_ascending=self.sort_ascending,
         )
+        # Add a Cost column the first time any estimated cost is available, so
+        # runs without cost estimation never get a blank column.
+        show_cost = progress.total_cost_estimate is not None
+        if show_cost and not getattr(self, "_completions_cost_col", False):
+            table.add_column("Cost", key="cost")
+            self._completions_cost_col = True
+        has_cost_col = getattr(self, "_completions_cost_col", False)
+
         rows = completion_rows(jobs, failed_job_ids)
         for idx, row in enumerate(rows):
             job = row.job
@@ -663,7 +672,12 @@ class SnakeseeApp(App[None]):
             if job.end_time is not None:
                 completed_str = datetime.fromtimestamp(job.end_time).strftime("%H:%M:%S")
             job_id_str = str(job.job_id) if job.job_id else str(idx + 1)
-            table.add_row(job_id_str, job.rule, threads_str, duration_str, completed_str)
+            cells = [job_id_str, job.rule, threads_str, duration_str, completed_str]
+            if has_cost_col:
+                cells.append(
+                    format_cost(job.cost_estimate) if job.cost_estimate is not None else "-"
+                )
+            table.add_row(*cells)
 
     def _populate_pending(self, progress: WorkflowProgress) -> None:
         """Populate the pending-jobs table using inferred per-rule pending counts."""
@@ -709,11 +723,23 @@ class SnakeseeApp(App[None]):
         rows = stats_rows(stats_list, self._data.thread_stats_dict())
         if self.sort_table == SortTable.STATS:
             rows = sort_stats_rows(rows, self.sort_column, self.sort_ascending)
+
+        # Per-rule estimated cost: add a Cost column once any cost data exists.
+        cost_by_rule = self._data.cost_by_rule()
+        if cost_by_rule and not getattr(self, "_stats_cost_col", False):
+            table.add_column("Cost", key="cost")
+            self._stats_cost_col = True
+        has_cost_col = getattr(self, "_stats_cost_col", False)
+
         for row in rows:
-            table.add_row(
+            cells = [
                 row.rule_display,
                 row.threads,
                 str(row.stats.count),
                 format_duration(row.stats.mean_duration),
                 format_duration(row.stats.std_dev) if row.stats.std_dev > 0 else "-",
-            )
+            ]
+            if has_cost_col:
+                rule_cost = cost_by_rule.get(row.stats.rule)
+                cells.append(format_cost(rule_cost) if rule_cost is not None else "-")
+            table.add_row(*cells)

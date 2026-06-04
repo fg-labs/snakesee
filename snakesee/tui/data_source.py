@@ -281,6 +281,10 @@ class WorkflowDataSource:
         """Return per-rule, per-thread timing statistics."""
         return self._workflow_state.rules.to_thread_stats_dict()
 
+    def cost_by_rule(self) -> dict[str, float]:
+        """Return summed estimated cost per rule (empty when no cost data)."""
+        return self._workflow_state.jobs.cost_by_rule()
+
     # ------------------------------------------------------------------ logs
     def refresh_log_list(self) -> None:
         """Refresh the list of available log files."""

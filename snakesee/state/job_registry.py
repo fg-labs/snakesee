@@ -372,6 +372,15 @@ class JobRegistry:
             ]
         return sum(costs) if costs else None
 
+    def cost_by_rule(self) -> dict[str, float]:
+        """Sum of per-job cost estimates grouped by rule (only rules with cost)."""
+        totals: dict[str, float] = {}
+        with self._lock:
+            for job in self._jobs.values():
+                if job.cost_estimate is not None:
+                    totals[job.rule] = totals.get(job.rule, 0.0) + job.cost_estimate
+        return totals
+
     def clear(self) -> None:
         """Clear all jobs from the registry."""
         with self._lock:

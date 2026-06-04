@@ -54,6 +54,30 @@ class TestCostPlumbing:
             )
         assert reg.total_cost_estimate() == pytest.approx(0.15)
 
+    def test_cost_by_rule_groups_and_sums(self) -> None:
+        reg = JobRegistry()
+        for jid, rule, cost in ((1, "align", 0.10), (2, "align", 0.05), (3, "sort", 0.20)):
+            reg.apply_event(
+                SnakeseeEvent(
+                    event_type=EventType.JOB_FINISHED,
+                    timestamp=1.0,
+                    job_id=jid,
+                    rule_name=rule,
+                    cost_estimate=cost,
+                    stopped_at=1.0,
+                )
+            )
+        by_rule = reg.cost_by_rule()
+        assert by_rule["align"] == pytest.approx(0.15)
+        assert by_rule["sort"] == pytest.approx(0.20)
+
+    def test_cost_by_rule_empty_without_cost(self) -> None:
+        reg = JobRegistry()
+        reg.apply_event(
+            SnakeseeEvent(event_type=EventType.JOB_FINISHED, timestamp=1.0, job_id=1, rule_name="r")
+        )
+        assert reg.cost_by_rule() == {}
+
     def test_total_cost_none_when_no_estimates(self) -> None:
         reg = JobRegistry()
         reg.apply_event(
