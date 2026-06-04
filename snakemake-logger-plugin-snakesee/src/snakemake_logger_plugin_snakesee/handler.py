@@ -8,7 +8,7 @@ from typing import Any
 from snakemake_interface_logger_plugins.base import LogHandlerBase
 
 from snakemake_logger_plugin_snakesee.events import EventType, SnakeseeEvent
-from snakemake_logger_plugin_snakesee.remote_adapter import WIRE_KEY, event_from_payload
+from snakemake_logger_plugin_snakesee.remote_adapter import event_from_payload, payload_from_record
 from snakemake_logger_plugin_snakesee.settings import LogHandlerSettings
 from snakemake_logger_plugin_snakesee.writer import EventWriter
 
@@ -105,11 +105,10 @@ class LogHandler(LogHandlerBase):
         timestamp = time.time()
 
         # Remote executors attach a structured remote-job-state payload to an
-        # ordinary log record (under ``snakesee_remote``) instead of using a
-        # Snakemake LogEvent — the LogEvent enum is fixed upstream and an
-        # executor cannot extend it. Handle that channel first; such records may
-        # have no ``event`` attribute at all.
-        remote_payload = getattr(record, WIRE_KEY, None)
+        # ordinary log record instead of using a Snakemake LogEvent — the
+        # LogEvent enum is fixed upstream and an executor cannot extend it. Handle
+        # that channel first; such records may have no ``event`` attribute at all.
+        remote_payload = payload_from_record(record)
         if remote_payload is not None:
             remote_event = event_from_payload(remote_payload, timestamp)
             if remote_event is not None:

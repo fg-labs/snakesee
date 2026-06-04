@@ -21,10 +21,24 @@ from typing import Any, Final
 from snakemake_logger_plugin_snakesee.events import EventType, SnakeseeEvent
 
 # Log-record attribute the executor uses to carry the payload.
+#
+# Two keys are recognised so the consumer is forward-compatible without any
+# change to the rest of the plugin or to snakesee:
+#   - WIRE_KEY ("snakesee_remote", schema_version 1) is the snakesee-specific
+#     contract the AWS Batch executor emits today.
+#   - NEUTRAL_WIRE_KEY ("remote_job_state", schema_version 2) is the
+#     backend-neutral shape proposed for upstream standardisation (Tier D). When
+#     Snakemake's executor interface emits a standard remote-job-state record,
+#     it will use this key; the payload shape is otherwise identical, so only
+#     this adapter needs to know about it.
 WIRE_KEY: Final[str] = "snakesee_remote"
+NEUTRAL_WIRE_KEY: Final[str] = "remote_job_state"
+
+# All record attributes that may carry a remote-state payload, newest first.
+WIRE_KEYS: Final[tuple[str, ...]] = (NEUTRAL_WIRE_KEY, WIRE_KEY)
 
 # Wire schema versions this plugin understands.
-SUPPORTED_SCHEMA_VERSIONS: Final[frozenset[int]] = frozenset({1})
+SUPPORTED_SCHEMA_VERSIONS: Final[frozenset[int]] = frozenset({1, 2})
 
 # Normalized phase string -> snakesee event type.
 _PHASE_TO_EVENT: Final[dict[str, EventType]] = {
@@ -33,6 +47,20 @@ _PHASE_TO_EVENT: Final[dict[str, EventType]] = {
     "succeeded": EventType.JOB_FINISHED,
     "failed": EventType.JOB_ERROR,
 }
+
+
+def payload_from_record(record: Any) -> Any | None:
+    """Extract a remote-state payload from a log record, or None if absent.
+
+    Checks the recognised wire keys (neutral first, then the snakesee-specific
+    one) so a record carrying either contract is handled. This is the single
+    place that knows *where* on the record the payload lives.
+    """
+    for key in WIRE_KEYS:
+        payload = getattr(record, key, None)
+        if payload is not None:
+            return payload
+    return None
 
 
 def event_from_payload(payload: Any, timestamp: float) -> SnakeseeEvent | None:
