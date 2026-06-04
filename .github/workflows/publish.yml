@@ -31,6 +31,11 @@ jobs:
     name: tests
     needs: on-main-branch-check
     if: ${{ needs.on-main-branch-check.outputs.on_main == 'true' }}
+    # The called workflow requests these permissions at its top level, so the
+    # caller must grant them explicitly or the run fails at startup.
+    permissions:
+      contents: read
+      pull-requests: write
     uses: "./.github/workflows/tests.yml"
 
   build-sdist:
