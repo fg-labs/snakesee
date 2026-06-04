@@ -49,6 +49,9 @@ class SnakeseeEvent:
         queue: The remote queue the job was routed to, if known.
         log_stream: Backend log stream identifier (e.g. CloudWatch stream).
         region: Cloud region, used to build console deep links.
+        termination_category: Why the job died (e.g. "spot", "oom"), if classified.
+        termination_source: Provenance of the classification (e.g. "aws_instance_state").
+        termination_confidence: How sure the producer was ("high" / "low").
     """
 
     event_type: EventType

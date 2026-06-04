@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+from snakesee import remote_termination
 from snakesee.remote_termination import CONFIDENCE_HIGH
 from snakesee.remote_termination import CONFIDENCE_LOW
 from snakesee.remote_termination import TERM_OOM
 from snakesee.remote_termination import TERM_SPOT
 from snakesee.remote_termination import TERM_UNKNOWN
 from snakesee.remote_termination import format_termination_marker
+
+
+class TestContractValues:
+    """Lock the wire strings of the published value set (the contract surface)."""
+
+    def test_category_wire_strings(self) -> None:
+        assert remote_termination.TERM_SPOT == "spot"
+        assert remote_termination.TERM_OOM == "oom"
+        assert remote_termination.TERM_TIMEOUT == "timeout"
+        assert remote_termination.TERM_NODE_FAILURE == "node_failure"
+        assert remote_termination.TERM_CANCELLED == "cancelled"
+        assert remote_termination.TERM_DEPENDENCY == "dependency"
+        assert remote_termination.TERM_IMAGE_PULL == "image_pull"
+        assert remote_termination.TERM_UNKNOWN == "unknown"
+
+    def test_confidence_and_source_wire_strings(self) -> None:
+        assert remote_termination.CONFIDENCE_HIGH == "high"
+        assert remote_termination.CONFIDENCE_LOW == "low"
+        assert remote_termination.SOURCE_EVENTBRIDGE == "eventbridge"
+        assert remote_termination.SOURCE_AWS_INSTANCE_STATE == "aws_instance_state"
+        assert remote_termination.SOURCE_EXECUTOR_HEURISTIC == "executor_heuristic"
+        assert remote_termination.SOURCE_STATUS_REASON == "status_reason"
 
 
 class TestFormatTerminationMarker:
@@ -84,6 +107,64 @@ class TestTerminationEndToEnd:
         assert any("⚠ spot interrupted" in line for line in lines)
         assert not any("possibly" in line for line in lines)
 
+    def test_structured_suppresses_string_heuristic(self) -> None:
+        # When a high-confidence classification AND a spot-matching status_reason
+        # both exist, exactly one (firm) marker renders — the heuristic is suppressed.
+        from snakesee.models import JobInfo
+        from snakesee.tui.renderables import make_remote_job_info
+
+        job = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            status_reason="Spot interruption: capacity reclaimed",  # would match heuristic
+            termination_category=TERM_SPOT,
+            termination_confidence=CONFIDENCE_HIGH,
+        )
+        lines = make_remote_job_info(job)
+        markers = [line for line in lines if "spot interrupted" in line]
+        assert len(markers) == 1
+        assert "⚠ spot interrupted" in markers[0]
+        assert "possibly" not in markers[0]
+
+    def test_explicit_unknown_suppresses_string_heuristic(self) -> None:
+        # An explicit TERM_UNKNOWN is still a structured classification: the executor
+        # looked and could not tell. The string heuristic must not override it.
+        from snakesee.models import JobInfo
+        from snakesee.tui.renderables import make_remote_job_info
+
+        job = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            status_reason="Spot interruption: capacity reclaimed",  # would match heuristic
+            termination_category=TERM_UNKNOWN,
+            termination_confidence=CONFIDENCE_HIGH,
+        )
+        lines = make_remote_job_info(job)
+        assert not any("spot interrupted" in line for line in lines)
+
+    def test_from_job_info_round_trip(self) -> None:
+        from snakesee.models import JobInfo
+        from snakesee.state.job_registry import Job
+
+        info = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            termination_category=TERM_SPOT,
+            termination_source="aws_instance_state",
+            termination_confidence=CONFIDENCE_HIGH,
+        )
+        job = Job.from_job_info(info)
+        assert job.termination_category == TERM_SPOT
+        assert job.termination_source == "aws_instance_state"
+        assert job.termination_confidence == CONFIDENCE_HIGH
+        back = job.to_job_info()
+        assert back.termination_category == TERM_SPOT
+        assert back.termination_source == "aws_instance_state"
+        assert back.termination_confidence == CONFIDENCE_HIGH
+
     def test_string_heuristic_fallback_is_tentative(self) -> None:
         from snakesee.models import JobInfo
         from snakesee.tui.renderables import make_remote_job_info
@@ -114,4 +195,5 @@ class TestTerminationEndToEnd:
         }
         event = SnakeseeEvent.from_json(orjson.dumps(payload))
         assert event.termination_category == "spot"
+        assert event.termination_source == "aws_instance_state"
         assert event.termination_confidence == "high"
