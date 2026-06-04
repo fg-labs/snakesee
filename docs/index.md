@@ -4,6 +4,8 @@
 
 snakesee provides a rich TUI dashboard for passively monitoring Snakemake workflows. It reads directly from the `.snakemake/` directory, requiring no special flags or configuration when running Snakemake.
 
+![snakesee monitoring a Snakemake workflow](assets/screenshot.svg)
+
 ## Features
 
 - **Zero configuration** - Works on any existing workflow without modification

@@ -17,6 +17,10 @@
 
 snakesee provides a Textual TUI dashboard for passively monitoring Snakemake workflows. It reads directly from the `.snakemake/` directory, requiring no special flags or configuration when running Snakemake.
 
+<p align="center">
+<img alt="snakesee monitoring a Snakemake workflow" src="docs/assets/screenshot.svg" width="800">
+</p>
+
 <p>
 <a href="https://fulcrumgenomics.com">
 <picture>
