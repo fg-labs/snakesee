@@ -16,6 +16,7 @@ spec, and each side implements it.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Final
 
 from snakemake_logger_plugin_snakesee.events import EventType, SnakeseeEvent
@@ -126,6 +127,7 @@ def event_from_payload(payload: Any, timestamp: float) -> SnakeseeEvent | None:
         termination_category=_opt_str(payload.get("termination_category")),
         termination_source=_opt_str(payload.get("termination_source")),
         termination_confidence=_opt_str(payload.get("termination_confidence")),
+        cost_estimate=_opt_float(payload.get("cost_estimate")),
         duration=duration,
         # Surface the failure reason as the error message for JOB_ERROR events.
         error_message=status_reason if event_type == EventType.JOB_ERROR else None,
@@ -148,10 +150,15 @@ def _opt_int(value: Any) -> int | None:
 
 
 def _opt_float(value: Any) -> float | None:
-    """Coerce an optional value to float, returning None on failure."""
+    """Coerce an optional value to float, returning None on failure or for non-finite values.
+
+    Non-finite results (nan/inf/-inf) are treated as failures so a single malformed payload
+    cannot poison sums such as ``JobRegistry.total_cost_estimate()``.
+    """
     if value is None or isinstance(value, bool):
         return None
     try:
-        return float(value)
+        result = float(value)
     except (TypeError, ValueError):
         return None
+    return result if math.isfinite(result) else None

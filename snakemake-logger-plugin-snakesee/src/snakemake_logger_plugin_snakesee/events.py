@@ -52,6 +52,7 @@ class SnakeseeEvent:
         termination_category: Why the job died (e.g. "spot", "oom"), if classified.
         termination_source: Provenance of the classification (e.g. "aws_instance_state").
         termination_confidence: How sure the producer was ("high" / "low").
+        cost_estimate: Estimated USD cost of the job (list/market price, not billed).
     """
 
     event_type: EventType
@@ -84,6 +85,7 @@ class SnakeseeEvent:
     termination_category: str | None = None
     termination_source: str | None = None
     termination_confidence: str | None = None
+    cost_estimate: float | None = None
 
     def to_json(self) -> str:
         """Serialize to compact JSON string.

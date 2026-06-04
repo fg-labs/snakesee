@@ -60,6 +60,7 @@ class Job:
         termination_category: Why the job died (e.g. "spot", "oom"), if classified.
         termination_source: Provenance of the classification (e.g. "aws_instance_state").
         termination_confidence: How sure the producer was ("high" / "low").
+        cost_estimate: Estimated USD cost of the job (list/market price, not billed).
     """
 
     key: str
@@ -84,6 +85,7 @@ class Job:
     termination_category: str | None = None
     termination_source: str | None = None
     termination_confidence: str | None = None
+    cost_estimate: float | None = None
     stats_recorded: bool = False
 
     @property
@@ -142,6 +144,7 @@ class Job:
             termination_category=self.termination_category,
             termination_source=self.termination_source,
             termination_confidence=self.termination_confidence,
+            cost_estimate=self.cost_estimate,
         )
 
     @classmethod
@@ -184,6 +187,7 @@ class Job:
             termination_category=job_info.termination_category,
             termination_source=job_info.termination_source,
             termination_confidence=job_info.termination_confidence,
+            cost_estimate=job_info.cost_estimate,
         )
 
 
@@ -360,6 +364,14 @@ class JobRegistry:
         """Get queued (remote, awaiting node) jobs as JobInfo."""
         return [job.to_job_info() for job in self.queued()]
 
+    def total_cost_estimate(self) -> float | None:
+        """Sum of per-job cost estimates across all jobs, or None if none have one."""
+        with self._lock:
+            costs = [
+                job.cost_estimate for job in self._jobs.values() if job.cost_estimate is not None
+            ]
+        return sum(costs) if costs else None
+
     def clear(self) -> None:
         """Clear all jobs from the registry."""
         with self._lock:
@@ -533,6 +545,8 @@ class JobRegistry:
             job.termination_source = event.termination_source
         if event.termination_confidence is not None:
             job.termination_confidence = event.termination_confidence
+        if event.cost_estimate is not None:
+            job.cost_estimate = event.cost_estimate
         if event.queued_at is not None and job.queued_at is None:
             job.queued_at = event.queued_at
 

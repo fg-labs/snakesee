@@ -1,5 +1,6 @@
 """Tests for monitor data models."""
 
+import math
 import time
 from pathlib import Path
 
@@ -89,6 +90,17 @@ class TestJobInfo:
         future_start = time.time() + 1000
         job = JobInfo(rule="test", start_time=future_start)
         assert job.elapsed == 0.0
+
+    def test_finite_cost_estimate_preserved(self) -> None:
+        """A finite cost_estimate (including 0.0) is stored unchanged."""
+        assert JobInfo(rule="test", cost_estimate=0.0).cost_estimate == 0.0
+        assert JobInfo(rule="test", cost_estimate=1.25).cost_estimate == 1.25
+        assert JobInfo(rule="test").cost_estimate is None
+
+    def test_non_finite_cost_estimate_dropped(self) -> None:
+        """nan/inf/-inf cost values are dropped to None so they cannot poison aggregates."""
+        for bad in (math.nan, math.inf, -math.inf):
+            assert JobInfo(rule="test", cost_estimate=bad).cost_estimate is None
 
 
 class TestRuleTimingStats:
@@ -466,6 +478,44 @@ class TestTimeEstimate:
 
 class TestWorkflowProgress:
     """Tests for the WorkflowProgress dataclass."""
+
+    def test_job_sequences_are_immutable_snapshots(self) -> None:
+        """List inputs are frozen into tuples so the snapshot cannot be mutated in place."""
+        source = [JobInfo(rule="a"), JobInfo(rule="b")]
+        progress = WorkflowProgress(
+            workflow_dir=Path("."),
+            status=WorkflowStatus.RUNNING,
+            total_jobs=10,
+            completed_jobs=0,
+            running_jobs=source,
+        )
+        # Stored as a tuple, decoupled from the source list...
+        assert isinstance(progress.running_jobs, tuple)
+        source.append(JobInfo(rule="c"))
+        assert len(progress.running_jobs) == 2
+        # ...and unset list fields default to an empty tuple, not a shared mutable list.
+        assert progress.failed_jobs_list == ()
+        assert isinstance(progress.recent_completions, tuple)
+
+    def test_non_finite_total_cost_estimate_dropped(self) -> None:
+        """nan/inf/-inf workflow totals are dropped to None so they cannot poison the header."""
+        for bad in (math.nan, math.inf, -math.inf):
+            progress = WorkflowProgress(
+                workflow_dir=Path("."),
+                status=WorkflowStatus.RUNNING,
+                total_jobs=10,
+                completed_jobs=0,
+                total_cost_estimate=bad,
+            )
+            assert progress.total_cost_estimate is None
+        finite = WorkflowProgress(
+            workflow_dir=Path("."),
+            status=WorkflowStatus.RUNNING,
+            total_jobs=10,
+            completed_jobs=0,
+            total_cost_estimate=2.5,
+        )
+        assert finite.total_cost_estimate == 2.5
 
     def test_percent_complete(self) -> None:
         """Test percent complete calculation."""
