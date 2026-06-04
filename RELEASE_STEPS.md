@@ -17,7 +17,7 @@ git push origin X.Y.Z
 
 # 4. Verify
 #    - PyPI: https://pypi.org/project/snakesee/
-#    - GitHub: https://github.com/nh13/snakesee/releases
+#    - GitHub: https://github.com/fg-labs/snakesee/releases
 #    - Install: pip install snakesee==X.Y.Z
 ```
 
@@ -33,7 +33,7 @@ CI automatically:
 
 Before releasing, ensure:
 - [ ] All tests pass: `pixi run check` or `uv run poe check-all`
-- [ ] Coverage meets 95% threshold
+- [ ] Coverage meets 80% threshold
 - [ ] Documentation builds: `pixi run docs`
 - [ ] All PRs for this release are merged to `main`
 
@@ -70,7 +70,7 @@ git push origin snakesee-logger-X.Y.Z
 
 # 4. Verify
 #    - PyPI: https://pypi.org/project/snakemake-logger-plugin-snakesee/
-#    - GitHub: https://github.com/nh13/snakesee/releases
+#    - GitHub: https://github.com/fg-labs/snakesee/releases
 #    - Install: pip install snakemake-logger-plugin-snakesee==X.Y.Z
 ```
 

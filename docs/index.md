@@ -36,6 +36,6 @@ snakesee status
 
 ## Links
 
-- [GitHub Repository](https://github.com/nh13/snakesee)
+- [GitHub Repository](https://github.com/fg-labs/snakesee)
 - [PyPI Package](https://pypi.org/project/snakesee/)
-- [Issue Tracker](https://github.com/nh13/snakesee/issues)
+- [Issue Tracker](https://github.com/fg-labs/snakesee/issues)

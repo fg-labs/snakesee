@@ -417,11 +417,11 @@ This codebase was written with the assistance of AI (Claude). All code has been 
 [type-check-badge]: https://img.shields.io/badge/type%20checked-mypy-blue
 [type-check-link]: https://mypy.readthedocs.io/
 [license-badge]: https://img.shields.io/badge/license-MIT-blue
-[license-link]: https://github.com/nh13/snakesee/blob/main/LICENSE
-[tests-badge]: https://github.com/nh13/snakesee/actions/workflows/tests.yml/badge.svg
-[tests-link]: https://github.com/nh13/snakesee/actions/workflows/tests.yml
-[codecov-badge]: https://codecov.io/gh/nh13/snakesee/graph/badge.svg
-[codecov-link]: https://codecov.io/gh/nh13/snakesee
+[license-link]: https://github.com/fg-labs/snakesee/blob/main/LICENSE
+[tests-badge]: https://github.com/fg-labs/snakesee/actions/workflows/tests.yml/badge.svg
+[tests-link]: https://github.com/fg-labs/snakesee/actions/workflows/tests.yml
+[codecov-badge]: https://codecov.io/gh/fg-labs/snakesee/graph/badge.svg
+[codecov-link]: https://codecov.io/gh/fg-labs/snakesee
 [docs-badge]: https://readthedocs.org/projects/snakesee/badge/?version=latest
 [docs-link]: https://snakesee.readthedocs.io/en/latest/
 [pypi-badge]: https://img.shields.io/pypi/v/snakesee
