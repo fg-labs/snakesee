@@ -1073,6 +1073,9 @@ class WorkflowDataSource:
             log_stream=job.log_stream or registry_job.log_stream,
             queue=job.queue or registry_job.queue,
             queued_at=job.queued_at if job.queued_at is not None else registry_job.queued_at,
+            attempt=job.attempt if job.attempt is not None else registry_job.attempt,
+            exit_code=job.exit_code if job.exit_code is not None else registry_job.exit_code,
+            status_reason=job.status_reason or registry_job.status_reason,
         )
 
     def _update_rule_stats_from_completions(self, progress: WorkflowProgress) -> None:

@@ -55,6 +55,9 @@ class JobInfo:
             remote job, start_time is the true execution start, so the difference
             is the queue wait.
         queue: The remote queue / compute environment the job was routed to, if known.
+        attempt: Attempt number for a retried/preempted remote job, if known.
+        exit_code: Container/process exit code for a finished remote job, if known.
+        status_reason: Backend-provided reason string (e.g. failure cause), if any.
     """
 
     rule: str
@@ -72,6 +75,9 @@ class JobInfo:
     log_stream: str | None = None
     queued_at: float | None = None
     queue: str | None = None
+    attempt: int | None = None
+    exit_code: int | None = None
+    status_reason: str | None = None
 
     @property
     def queue_wait(self) -> float | None:

@@ -114,3 +114,32 @@ def _cw_encode(value: str) -> str:
     """Apply CloudWatch's double percent-encoding to a path component."""
     once = quote(value, safe="")
     return once.replace("%", "$25")
+
+
+# Substrings AWS Batch / ECS use in statusReason when a Spot instance is reclaimed.
+_SPOT_MARKERS = ("spot interruption", "spot instance", "ec2 spot")
+# A reclaimed Spot host shows up as the EC2 instance being terminated out from under
+# the job; pair the host-terminated phrasing with a spot hint to avoid false positives.
+_HOST_TERMINATED = "host ec2"
+
+
+def is_spot_interruption(status_reason: str | None) -> bool:
+    """Heuristically detect whether a failure was a Spot-instance interruption.
+
+    Args:
+        status_reason: The backend-provided status reason string, if any.
+
+    Returns:
+        True if the reason looks like a Spot reclamation / interruption.
+    """
+    if not status_reason:
+        return False
+    lowered = status_reason.lower()
+    if any(marker in lowered for marker in _SPOT_MARKERS):
+        return True
+    # "Host EC2 (instance i-...) terminated." with a spot hint nearby. Note this
+    # conservatively misses real Spot reclamations where Batch phrases the host
+    # termination without the word "spot" — we accept that false negative to avoid
+    # misclassifying ordinary host failures. A structured signal from the executor
+    # would supersede this heuristic.
+    return _HOST_TERMINATED in lowered and "spot" in lowered

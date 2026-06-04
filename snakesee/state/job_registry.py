@@ -54,6 +54,9 @@ class Job:
         log_stream: Backend log stream identifier (e.g. CloudWatch stream), if known.
         queued_at: Epoch seconds the job entered the remote queue, if known.
         queue: The remote queue / compute environment the job was routed to, if known.
+        attempt: Attempt number for a retried/preempted remote job, if known.
+        exit_code: Container/process exit code for a finished remote job, if known.
+        status_reason: Backend-provided reason string (e.g. failure cause), if any.
     """
 
     key: str
@@ -72,6 +75,9 @@ class Job:
     log_stream: str | None = None
     queued_at: float | None = None
     queue: str | None = None
+    attempt: int | None = None
+    exit_code: int | None = None
+    status_reason: str | None = None
     stats_recorded: bool = False
 
     @property
@@ -124,6 +130,9 @@ class Job:
             log_stream=self.log_stream,
             queued_at=self.queued_at,
             queue=self.queue,
+            attempt=self.attempt,
+            exit_code=self.exit_code,
+            status_reason=self.status_reason,
         )
 
     @classmethod
@@ -160,6 +169,9 @@ class Job:
             log_stream=job_info.log_stream,
             queued_at=job_info.queued_at,
             queue=job_info.queue,
+            attempt=job_info.attempt,
+            exit_code=job_info.exit_code,
+            status_reason=job_info.status_reason,
         )
 
 
@@ -497,6 +509,12 @@ class JobRegistry:
             job.log_stream = event.log_stream
         if event.queue is not None:
             job.queue = event.queue
+        if event.attempt is not None:
+            job.attempt = event.attempt
+        if event.exit_code is not None:
+            job.exit_code = event.exit_code
+        if event.status_reason is not None:
+            job.status_reason = event.status_reason
         if event.queued_at is not None and job.queued_at is None:
             job.queued_at = event.queued_at
 

@@ -65,6 +65,20 @@ def make_remote_job_info(job: "JobInfo") -> list[str]:
     if queue_wait is not None:
         lines.append(f"  queued for: {format_duration(queue_wait)}")
 
+    # Attempt > 1 means the job was retried/preempted; worth surfacing.
+    if job.attempt is not None and job.attempt > 1:
+        lines.append(f"  attempt: {job.attempt}")
+
+    if job.exit_code is not None:
+        lines.append(f"  exit code: {job.exit_code}")
+
+    if job.status_reason:
+        from snakesee.remote_links import is_spot_interruption
+
+        if is_spot_interruption(job.status_reason):
+            lines.append("  ⚠ spot interrupted")
+        lines.append(f"  reason: {job.status_reason}")
+
     console = batch_console_url(job.external_jobid, region=job.region)
     if console is not None:
         lines.append(f"  console: {console}")
