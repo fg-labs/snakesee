@@ -1826,7 +1826,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "snakesee"
-version = "0.7.0"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "defopt" },
@@ -1872,7 +1872,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.0.0" },
     { name = "rich-pixels", specifier = ">=3.0.1" },
     { name = "snakemake", specifier = ">=8.0.0" },
-    { name = "textual", specifier = ">=0.80" },
+    { name = "textual", specifier = ">=0.80.0" },
 ]
 
 [package.metadata.requires-dev]
