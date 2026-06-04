@@ -72,11 +72,21 @@ def make_remote_job_info(job: "JobInfo") -> list[str]:
     if job.exit_code is not None:
         lines.append(f"  exit code: {job.exit_code}")
 
-    if job.status_reason:
+    # Prefer the executor's structured termination classification (rendered with
+    # confidence). Fall back to snakesee's own low-confidence string heuristic only
+    # when no structured category arrived (e.g. an older executor).
+    from snakesee.remote_termination import format_termination_marker
+
+    marker = format_termination_marker(job.termination_category, job.termination_confidence)
+    if job.termination_category is None and job.status_reason:
         from snakesee.remote_links import is_spot_interruption
 
         if is_spot_interruption(job.status_reason):
-            lines.append("  ⚠ spot interrupted")
+            marker = "possibly spot interrupted"
+    if marker is not None:
+        lines.append(f"  {marker}")
+
+    if job.status_reason:
         lines.append(f"  reason: {job.status_reason}")
 
     console = batch_console_url(job.external_jobid, region=job.region)

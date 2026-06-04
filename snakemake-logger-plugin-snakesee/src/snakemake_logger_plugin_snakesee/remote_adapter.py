@@ -123,6 +123,9 @@ def event_from_payload(payload: Any, timestamp: float) -> SnakeseeEvent | None:
         queue=_opt_str(payload.get("queue")),
         log_stream=_opt_str(payload.get("log_stream")),
         region=_opt_str(payload.get("region")),
+        termination_category=_opt_str(payload.get("termination_category")),
+        termination_source=_opt_str(payload.get("termination_source")),
+        termination_confidence=_opt_str(payload.get("termination_confidence")),
         duration=duration,
         # Surface the failure reason as the error message for JOB_ERROR events.
         error_message=status_reason if event_type == EventType.JOB_ERROR else None,

@@ -1076,6 +1076,11 @@ class WorkflowDataSource:
             attempt=job.attempt if job.attempt is not None else registry_job.attempt,
             exit_code=job.exit_code if job.exit_code is not None else registry_job.exit_code,
             status_reason=job.status_reason or registry_job.status_reason,
+            termination_category=job.termination_category or registry_job.termination_category,
+            termination_source=job.termination_source or registry_job.termination_source,
+            termination_confidence=(
+                job.termination_confidence or registry_job.termination_confidence
+            ),
         )
 
     def _update_rule_stats_from_completions(self, progress: WorkflowProgress) -> None:

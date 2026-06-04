@@ -57,6 +57,9 @@ class Job:
         attempt: Attempt number for a retried/preempted remote job, if known.
         exit_code: Container/process exit code for a finished remote job, if known.
         status_reason: Backend-provided reason string (e.g. failure cause), if any.
+        termination_category: Why the job died (e.g. "spot", "oom"), if classified.
+        termination_source: Provenance of the classification (e.g. "aws_instance_state").
+        termination_confidence: How sure the producer was ("high" / "low").
     """
 
     key: str
@@ -78,6 +81,9 @@ class Job:
     attempt: int | None = None
     exit_code: int | None = None
     status_reason: str | None = None
+    termination_category: str | None = None
+    termination_source: str | None = None
+    termination_confidence: str | None = None
     stats_recorded: bool = False
 
     @property
@@ -133,6 +139,9 @@ class Job:
             attempt=self.attempt,
             exit_code=self.exit_code,
             status_reason=self.status_reason,
+            termination_category=self.termination_category,
+            termination_source=self.termination_source,
+            termination_confidence=self.termination_confidence,
         )
 
     @classmethod
@@ -172,6 +181,9 @@ class Job:
             attempt=job_info.attempt,
             exit_code=job_info.exit_code,
             status_reason=job_info.status_reason,
+            termination_category=job_info.termination_category,
+            termination_source=job_info.termination_source,
+            termination_confidence=job_info.termination_confidence,
         )
 
 
@@ -515,6 +527,12 @@ class JobRegistry:
             job.exit_code = event.exit_code
         if event.status_reason is not None:
             job.status_reason = event.status_reason
+        if event.termination_category is not None:
+            job.termination_category = event.termination_category
+        if event.termination_source is not None:
+            job.termination_source = event.termination_source
+        if event.termination_confidence is not None:
+            job.termination_confidence = event.termination_confidence
         if event.queued_at is not None and job.queued_at is None:
             job.queued_at = event.queued_at
 

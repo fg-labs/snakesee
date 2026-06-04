@@ -58,6 +58,9 @@ class JobInfo:
         attempt: Attempt number for a retried/preempted remote job, if known.
         exit_code: Container/process exit code for a finished remote job, if known.
         status_reason: Backend-provided reason string (e.g. failure cause), if any.
+        termination_category: Why the job died (e.g. "spot", "oom"), if classified.
+        termination_source: Provenance of the classification (e.g. "aws_instance_state").
+        termination_confidence: How sure the producer was ("high" / "low").
     """
 
     rule: str
@@ -78,6 +81,9 @@ class JobInfo:
     attempt: int | None = None
     exit_code: int | None = None
     status_reason: str | None = None
+    termination_category: str | None = None
+    termination_source: str | None = None
+    termination_confidence: str | None = None
 
     @property
     def queue_wait(self) -> float | None:

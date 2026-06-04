@@ -78,6 +78,9 @@ class SnakeseeEvent:
     queue: str | None = None
     log_stream: str | None = None
     region: str | None = None
+    termination_category: str | None = None
+    termination_source: str | None = None
+    termination_confidence: str | None = None
 
     def to_json(self) -> str:
         """Serialize to compact JSON string.

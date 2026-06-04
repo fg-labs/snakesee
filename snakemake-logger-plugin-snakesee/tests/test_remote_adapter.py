@@ -62,6 +62,21 @@ class TestEventFromPayload:
         assert event.status_reason == "OOM killed"
         assert event.exit_code == 137
 
+    def test_termination_fields_carried(self) -> None:
+        event = event_from_payload(
+            _payload(
+                phase="failed",
+                termination_category="spot",
+                termination_source="aws_instance_state",
+                termination_confidence="high",
+            ),
+            timestamp=1.0,
+        )
+        assert event is not None
+        assert event.termination_category == "spot"
+        assert event.termination_source == "aws_instance_state"
+        assert event.termination_confidence == "high"
+
     def test_external_id_and_region_carried(self) -> None:
         event = event_from_payload(
             _payload(external_jobid="arn:...:job/abc", region="us-east-1", queue="gv-spot"),
