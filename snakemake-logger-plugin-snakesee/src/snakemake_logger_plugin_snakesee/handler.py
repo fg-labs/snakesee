@@ -19,7 +19,7 @@ except ImportError:
     # Fallback for older versions
     from enum import Enum
 
-    class LogEvent(str, Enum):
+    class LogEvent(str, Enum):  # type: ignore[no-redef]
         """Fallback LogEvent enum for compatibility."""
 
         ERROR = "error"
@@ -53,9 +53,11 @@ class LogHandler(LogHandlerBase):
         elif not isinstance(workflow_dir, Path):
             workflow_dir = Path(workflow_dir)
 
-        # Get settings with defaults if None
+        # Get settings with defaults. self.settings is typed as the base
+        # LogHandlerSettingsBase (or None); narrow to this plugin's concrete
+        # LogHandlerSettings so its event_file/buffer_size fields resolve.
         settings = self.settings
-        if settings is None:
+        if not isinstance(settings, LogHandlerSettings):
             settings = LogHandlerSettings()
 
         event_path = workflow_dir / settings.event_file
