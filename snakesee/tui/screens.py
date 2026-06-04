@@ -84,16 +84,25 @@ class JobLogScreen(ModalScreen[None]):
         Binding("ctrl+r", "app.hard_refresh", show=False),
     ]
 
-    def __init__(self, log_path: Path | None, lines: list[str]) -> None:
+    def __init__(
+        self,
+        log_path: Path | None,
+        lines: list[str],
+        header_lines: list[str] | None = None,
+    ) -> None:
         """Initialize with the log path (shown as the border title) and tail lines.
 
         Args:
             log_path: Path to the job's log file, or None if unknown.
             lines: Tail lines (most recent at end) to render in the RichLog.
+            header_lines: Optional lines rendered above the log (e.g. a remote
+                job's external id and console/CloudWatch links). For a remote job
+                with no local log file, these may be the only content.
         """
         super().__init__()
         self._log_path = log_path
         self._lines = lines
+        self._header_lines = header_lines or []
 
     def compose(self) -> ComposeResult:
         """Yield a single RichLog widget that will be populated on mount."""
@@ -104,11 +113,20 @@ class JobLogScreen(ModalScreen[None]):
             wrap=False,
             auto_scroll=False,
         )
-        log.border_title = str(self._log_path) if self._log_path is not None else "job log"
+        if self._log_path is not None:
+            log.border_title = str(self._log_path)
+        elif self._header_lines:
+            log.border_title = "remote job"
+        else:
+            log.border_title = "job log"
         yield log
 
     def on_mount(self) -> None:
-        """Write the captured tail lines into the RichLog widget."""
+        """Write the optional header and captured tail lines into the RichLog widget."""
         log = self.query_one("#job-log", RichLog)
+        for line in self._header_lines:
+            log.write(line)
+        if self._header_lines and self._lines:
+            log.write("")  # blank separator between the remote header and the log tail
         for line in self._lines:
             log.write(line)

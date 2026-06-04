@@ -47,6 +47,10 @@ class Job:
         threads: Number of threads allocated.
         input_size: Total input file size in bytes.
         log_file: Path to job's log file.
+        external_jobid: External executor job id/ARN (e.g. AWS Batch), if remote.
+        executor: Remote executor identifier (e.g. "aws-batch"), if applicable.
+        region: Cloud region, used to build console deep links (if known).
+        log_stream: Backend log stream identifier (e.g. CloudWatch stream), if known.
     """
 
     key: str
@@ -59,6 +63,10 @@ class Job:
     threads: int | None = None
     input_size: int | None = None
     log_file: Path | None = None
+    external_jobid: str | None = None
+    executor: str | None = None
+    region: str | None = None
+    log_stream: str | None = None
     stats_recorded: bool = False
 
     @property
@@ -92,6 +100,10 @@ class Job:
             input_size=self.input_size,
             threads=self.threads,
             log_file=self.log_file,
+            external_jobid=self.external_jobid,
+            executor=self.executor,
+            region=self.region,
+            log_stream=self.log_stream,
         )
 
     @classmethod
@@ -122,6 +134,10 @@ class Job:
             threads=job_info.threads,
             input_size=job_info.input_size,
             log_file=job_info.log_file,
+            external_jobid=job_info.external_jobid,
+            executor=job_info.executor,
+            region=job_info.region,
+            log_stream=job_info.log_stream,
         )
 
 

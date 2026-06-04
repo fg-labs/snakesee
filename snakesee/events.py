@@ -8,6 +8,7 @@ accurate and timely job status information than log parsing.
 import logging
 import threading
 from dataclasses import dataclass
+from dataclasses import fields
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ class EventType(str, Enum):
 
     WORKFLOW_STARTED = "workflow_started"
     JOB_SUBMITTED = "job_submitted"
+    JOB_QUEUED = "job_queued"
     JOB_STARTED = "job_started"
     JOB_FINISHED = "job_finished"
     JOB_ERROR = "job_error"
@@ -55,6 +57,18 @@ class SnakeseeEvent:
         completed_jobs: Number of completed jobs (for progress events).
         total_jobs: Total number of jobs (for progress events).
         workflow_id: Unique workflow identifier.
+        executor: Remote executor identifier (e.g. "aws-batch"), if applicable.
+        external_jobid: External executor job id/ARN, for remote jobs.
+        remote_status: Raw backend status string (e.g. "RUNNING"), for remote jobs.
+        queued_at: Epoch seconds the job entered the remote queue, if known.
+        started_at: Epoch seconds the job began executing on a remote node, if known.
+        stopped_at: Epoch seconds the job stopped executing remotely, if known.
+        attempt: 1-based attempt number for retried/preempted remote jobs.
+        exit_code: Container/process exit code for a finished remote job.
+        status_reason: Backend-provided reason string (e.g. failure cause).
+        queue: The remote queue the job was routed to, if known.
+        log_stream: Backend log stream identifier (e.g. CloudWatch stream).
+        region: Cloud region, used to build console deep links.
     """
 
     event_type: EventType
@@ -71,6 +85,19 @@ class SnakeseeEvent:
     completed_jobs: int | None = None
     total_jobs: int | None = None
     workflow_id: str | None = None
+    # Remote-executor enrichment (all optional; absent for local jobs).
+    executor: str | None = None
+    external_jobid: str | None = None
+    remote_status: str | None = None
+    queued_at: float | None = None
+    started_at: float | None = None
+    stopped_at: float | None = None
+    attempt: int | None = None
+    exit_code: int | None = None
+    status_reason: str | None = None
+    queue: str | None = None
+    log_stream: str | None = None
+    region: str | None = None
 
     @classmethod
     def from_json(cls, json_str: str | bytes) -> "SnakeseeEvent":
@@ -98,6 +125,13 @@ class SnakeseeEvent:
             data["input_files"] = tuple(data["input_files"])
         if "output_files" in data and data["output_files"] is not None:
             data["output_files"] = tuple(data["output_files"])
+
+        # Drop unknown keys for forward compatibility: a newer plugin may emit
+        # fields this build of snakesee doesn't model yet, and cls(**data) would
+        # otherwise raise on the unexpected keyword. Skipping them lets an older
+        # reader keep working against a newer event stream.
+        known = {f.name for f in fields(cls)}
+        data = {k: v for k, v in data.items() if k in known}
 
         return cls(**data)
 

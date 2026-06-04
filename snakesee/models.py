@@ -47,6 +47,10 @@ class JobInfo:
         input_size: Total size of input files in bytes (None if unknown).
         threads: Number of threads allocated to this job (None if unknown).
         log_file: Path to the job's log file (parsed from snakemake log directive).
+        external_jobid: External executor job id/ARN (e.g. AWS Batch), if remote.
+        executor: Remote executor identifier (e.g. "aws-batch"), if applicable.
+        region: Cloud region, used to build console deep links (if known).
+        log_stream: Backend log stream identifier (e.g. CloudWatch stream), if known.
     """
 
     rule: str
@@ -58,6 +62,10 @@ class JobInfo:
     input_size: int | None = None
     threads: int | None = None
     log_file: Path | None = None
+    external_jobid: str | None = None
+    executor: str | None = None
+    region: str | None = None
+    log_stream: str | None = None
 
     @property
     def elapsed(self) -> float | None:

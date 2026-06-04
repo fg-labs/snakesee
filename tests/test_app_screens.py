@@ -95,6 +95,43 @@ async def test_job_log_screen_default_title_when_no_path(tmp_path: Path) -> None
         await pilot.press("q")
 
 
+async def test_job_log_screen_renders_remote_header(tmp_path: Path) -> None:
+    """A remote job with no local log shows only its header lines, titled 'remote job'."""
+    from textual.widgets import RichLog
+
+    header = ["aws-batch job: abc123", "  console: https://example"]
+
+    app = SnakeseeApp(workflow_dir=tmp_path)
+    async with app.run_test() as pilot:
+        screen = JobLogScreen(None, [], header_lines=header)
+        app.push_screen(screen)
+        await pilot.pause()
+        rich_log = screen.query_one("#job-log", RichLog)
+        assert rich_log.border_title == "remote job"
+        assert len(rich_log.lines) == len(header)
+        await pilot.press("escape")
+        await pilot.press("q")
+
+
+async def test_job_log_screen_header_plus_log_has_separator(tmp_path: Path) -> None:
+    """Header lines and log tail are separated by a blank line when both present."""
+    from textual.widgets import RichLog
+
+    header = ["aws-batch job: abc123"]
+    lines = ["log line one", "log line two"]
+
+    app = SnakeseeApp(workflow_dir=tmp_path)
+    async with app.run_test() as pilot:
+        screen = JobLogScreen(tmp_path / "job.log", lines, header_lines=header)
+        app.push_screen(screen)
+        await pilot.pause()
+        rich_log = screen.query_one("#job-log", RichLog)
+        # header (1) + blank separator (1) + log lines (2) = 4
+        assert len(rich_log.lines) == len(header) + 1 + len(lines)
+        await pilot.press("escape")
+        await pilot.press("q")
+
+
 async def test_toggle_pause_works_in_log_viewing_mode(tmp_path: Path) -> None:
     """The global pause toggle (p) still fires while a JobLogScreen is open.
 
