@@ -132,6 +132,13 @@ def make_header(
         header_text.append("  │  Elapsed: ")
         header_text.append(format_duration(progress.elapsed_seconds), style=FG_BLUE)
 
+    # Remote executors can have jobs queued (awaiting a node) but not yet running;
+    # surface that count so a "running" workflow waiting on the queue is honest.
+    queued_count = len(progress.queued_jobs_list)
+    if queued_count > 0:
+        header_text.append("  │  Queued: ")
+        header_text.append(str(queued_count), style="bold yellow")
+
     if paused:
         header_text.append("  │  ")
         header_text.append("PAUSED", style="bold yellow")
