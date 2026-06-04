@@ -28,8 +28,8 @@ dependencies = ["snakemake-interface-logger-plugins>=1.0.0"]
 dev = ["pytest>=7.4.0", "mypy>=1.10.0", "ruff>=0.6.0"]
 
 [project.urls]
-Homepage = "https://github.com/nh13/snakesee"
-Repository = "https://github.com/nh13/snakesee"
+Homepage = "https://github.com/fg-labs/snakesee"
+Repository = "https://github.com/fg-labs/snakesee"
 
 [project.entry-points."snakemake.plugins.logger"]
 snakesee = "snakemake_logger_plugin_snakesee:LogHandler"

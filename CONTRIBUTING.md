@@ -13,7 +13,7 @@ Thank you for your interest in contributing to snakesee!
 
 ```bash
 # Clone the repository
-git clone https://github.com/nh13/snakesee.git
+git clone https://github.com/fg-labs/snakesee.git
 cd snakesee
 
 # Install development environment
@@ -36,7 +36,7 @@ pixi run docs
 
 ```bash
 # Clone the repository
-git clone https://github.com/nh13/snakesee.git
+git clone https://github.com/fg-labs/snakesee.git
 cd snakesee
 
 # Create virtual environment and install
@@ -153,4 +153,4 @@ The plugin writes events to `.snakesee_events.jsonl` which snakesee reads via `s
 
 ## Questions?
 
-Open an issue at https://github.com/nh13/snakesee/issues
+Open an issue at https://github.com/fg-labs/snakesee/issues

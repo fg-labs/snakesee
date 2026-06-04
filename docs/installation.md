@@ -42,7 +42,7 @@ mamba install -c bioconda snakesee
 Clone and install in development mode:
 
 ```bash
-git clone https://github.com/nh13/snakesee.git
+git clone https://github.com/fg-labs/snakesee.git
 cd snakesee
 pip install -e '.[logo]'
 ```

@@ -34,10 +34,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/nh13/snakesee"
-Repository = "https://github.com/nh13/snakesee"
+Homepage = "https://github.com/fg-labs/snakesee"
+Repository = "https://github.com/fg-labs/snakesee"
 Documentation = "https://snakesee.readthedocs.io"
-"Bug Tracker" = "https://github.com/nh13/snakesee/issues"
+"Bug Tracker" = "https://github.com/fg-labs/snakesee/issues"
 
 [project.scripts]
 snakesee = "snakesee.cli:main"

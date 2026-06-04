@@ -1,6 +1,6 @@
 # snakemake-logger-plugin-snakesee
 
-A Snakemake logger plugin that integrates with [snakesee](https://github.com/nh13/snakesee) for enhanced workflow monitoring.
+A Snakemake logger plugin that integrates with [snakesee](https://github.com/fg-labs/snakesee) for enhanced workflow monitoring.
 
 ## Overview
 
