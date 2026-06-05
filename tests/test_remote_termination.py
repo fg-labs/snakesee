@@ -107,8 +107,8 @@ class TestTerminationEndToEnd:
             termination_confidence=CONFIDENCE_HIGH,
         )
         lines = make_remote_job_info(job)
-        assert any("⚠ spot interrupted" in line for line in lines)
-        assert not any("possibly" in line for line in lines)
+        assert any("⚠ spot interrupted" in line.plain for line in lines)
+        assert not any("possibly" in line.plain for line in lines)
 
     def test_structured_suppresses_string_heuristic(self) -> None:
         # When a high-confidence classification AND a spot-matching status_reason
@@ -125,10 +125,10 @@ class TestTerminationEndToEnd:
             termination_confidence=CONFIDENCE_HIGH,
         )
         lines = make_remote_job_info(job)
-        markers = [line for line in lines if "spot interrupted" in line]
+        markers = [line for line in lines if "spot interrupted" in line.plain]
         assert len(markers) == 1
-        assert "⚠ spot interrupted" in markers[0]
-        assert "possibly" not in markers[0]
+        assert "⚠ spot interrupted" in markers[0].plain
+        assert "possibly" not in markers[0].plain
 
     def test_explicit_unknown_suppresses_string_heuristic(self) -> None:
         # An explicit TERM_UNKNOWN is still a structured classification: the executor
@@ -145,7 +145,7 @@ class TestTerminationEndToEnd:
             termination_confidence=CONFIDENCE_HIGH,
         )
         lines = make_remote_job_info(job)
-        assert not any("spot interrupted" in line for line in lines)
+        assert not any("spot interrupted" in line.plain for line in lines)
 
     def test_from_job_info_round_trip(self) -> None:
         from snakesee.models import JobInfo
@@ -180,7 +180,7 @@ class TestTerminationEndToEnd:
             status_reason="Spot interruption: capacity reclaimed",
         )
         lines = make_remote_job_info(job)
-        assert any("possibly spot interrupted" in line for line in lines)
+        assert any("possibly spot interrupted" in line.plain for line in lines)
 
     def test_plugin_adapter_passes_termination_through(self) -> None:
         # The plugin's reader-side event also carries the fields after JSON round trip.

@@ -139,20 +139,20 @@ class TestObservabilityDisplay:
             status_reason="Spot interruption: capacity reclaimed",
         )
         lines = make_remote_job_info(job)
-        assert any("attempt: 2" in line for line in lines)
-        assert any("exit code: 137" in line for line in lines)
-        assert any("spot interrupted" in line for line in lines)
-        assert any("reason:" in line and "capacity reclaimed" in line for line in lines)
+        assert any("attempt: 2" in line.plain for line in lines)
+        assert any("exit code: 137" in line.plain for line in lines)
+        assert any("spot interrupted" in line.plain for line in lines)
+        assert any("reason:" in line.plain and "capacity reclaimed" in line.plain for line in lines)
 
     def test_first_attempt_not_shown(self) -> None:
         # attempt == 1 is the normal case; don't clutter the detail with it.
         job = JobInfo(rule="align", job_id="7", external_jobid="abc", attempt=1)
         lines = make_remote_job_info(job)
-        assert not any("attempt:" in line for line in lines)
+        assert not any("attempt:" in line.plain for line in lines)
 
     def test_clean_success_has_no_reason_or_spot(self) -> None:
         job = JobInfo(rule="align", job_id="7", external_jobid="abc", exit_code=0)
         lines = make_remote_job_info(job)
-        assert any("exit code: 0" in line for line in lines)
-        assert not any("spot interrupted" in line for line in lines)
-        assert not any("reason:" in line for line in lines)
+        assert any("exit code: 0" in line.plain for line in lines)
+        assert not any("spot interrupted" in line.plain for line in lines)
+        assert not any("reason:" in line.plain for line in lines)
