@@ -522,6 +522,11 @@ class SnakeseeApp(App[None]):
         # is running. The ignore works around Textual's stubs typing class-level reactive
         # access as the value type (float) rather than Reactive[float].
         self.set_reactive(SnakeseeApp.refresh_rate, refresh_rate)  # type: ignore[arg-type]
+        # Whether the (lazily-added) Cost columns have been added to the
+        # completions / stats tables. Once True they stay — the column and flag
+        # must always move together to avoid an add_row cell-count mismatch.
+        self._completions_cost_col: bool = False
+        self._stats_cost_col: bool = False
 
     def compose(self) -> ComposeResult:
         """Compose the widget tree (header / progress / six tables / summary / footer)."""
@@ -657,11 +662,9 @@ class SnakeseeApp(App[None]):
         )
         # Add a Cost column the first time any estimated cost is available, so
         # runs without cost estimation never get a blank column.
-        show_cost = progress.total_cost_estimate is not None
-        if show_cost and not getattr(self, "_completions_cost_col", False):
+        if progress.total_cost_estimate is not None and not self._completions_cost_col:
             table.add_column("Cost", key="cost")
             self._completions_cost_col = True
-        has_cost_col = getattr(self, "_completions_cost_col", False)
 
         rows = completion_rows(jobs, failed_job_ids)
         for idx, row in enumerate(rows):
@@ -673,7 +676,7 @@ class SnakeseeApp(App[None]):
                 completed_str = datetime.fromtimestamp(job.end_time).strftime("%H:%M:%S")
             job_id_str = str(job.job_id) if job.job_id else str(idx + 1)
             cells = [job_id_str, job.rule, threads_str, duration_str, completed_str]
-            if has_cost_col:
+            if self._completions_cost_col:
                 cells.append(
                     format_cost(job.cost_estimate) if job.cost_estimate is not None else "-"
                 )
@@ -725,11 +728,12 @@ class SnakeseeApp(App[None]):
             rows = sort_stats_rows(rows, self.sort_column, self.sort_ascending)
 
         # Per-rule estimated cost: add a Cost column once any cost data exists.
+        # Sourced from the live registry (the stats panel is itself registry-backed,
+        # so this stays consistent with the rest of the stats frame).
         cost_by_rule = self._data.cost_by_rule()
-        if cost_by_rule and not getattr(self, "_stats_cost_col", False):
+        if cost_by_rule and not self._stats_cost_col:
             table.add_column("Cost", key="cost")
             self._stats_cost_col = True
-        has_cost_col = getattr(self, "_stats_cost_col", False)
 
         for row in rows:
             cells = [
@@ -739,7 +743,7 @@ class SnakeseeApp(App[None]):
                 format_duration(row.stats.mean_duration),
                 format_duration(row.stats.std_dev) if row.stats.std_dev > 0 else "-",
             ]
-            if has_cost_col:
+            if self._stats_cost_col:
                 rule_cost = cost_by_rule.get(row.stats.rule)
                 cells.append(format_cost(rule_cost) if rule_cost is not None else "-")
             table.add_row(*cells)
