@@ -5,10 +5,13 @@ from __future__ import annotations
 from snakesee import remote_termination
 from snakesee.remote_termination import CONFIDENCE_HIGH
 from snakesee.remote_termination import CONFIDENCE_LOW
+from snakesee.remote_termination import SOURCE_AWS_INSTANCE_STATE
+from snakesee.remote_termination import SOURCE_STATUS_REASON
 from snakesee.remote_termination import TERM_OOM
 from snakesee.remote_termination import TERM_SPOT
 from snakesee.remote_termination import TERM_UNKNOWN
 from snakesee.remote_termination import format_termination_marker
+from snakesee.remote_termination import format_termination_source
 
 
 class TestContractValues:
@@ -197,3 +200,26 @@ class TestTerminationEndToEnd:
         assert event.termination_category == "spot"
         assert event.termination_source == "aws_instance_state"
         assert event.termination_confidence == "high"
+
+
+class TestFormatTerminationSource:
+    """format_termination_source renders provenance as a 'via ...' phrase."""
+
+    def test_aws_instance_state_label(self) -> None:
+        assert format_termination_source(SOURCE_AWS_INSTANCE_STATE) == "via EC2 instance state"
+
+    def test_status_reason_label(self) -> None:
+        assert format_termination_source(SOURCE_STATUS_REASON) == "via status-reason text"
+
+    def test_unknown_source_falls_back_to_raw(self) -> None:
+        # Contract-reserved but unemitted values render via the raw fallback
+        # (forward-compat with executors that send new sources).
+        assert format_termination_source("executor_heuristic") == "via executor heuristic"
+        assert format_termination_source("eventbridge") == "via eventbridge"
+
+    def test_none_source_yields_none(self) -> None:
+        assert format_termination_source(None) is None
+
+    def test_empty_source_yields_none(self) -> None:
+        # An empty string must not render a dangling "via ".
+        assert format_termination_source("") is None
