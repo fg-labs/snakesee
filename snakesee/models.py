@@ -47,6 +47,14 @@ class JobInfo:
         input_size: Total size of input files in bytes (None if unknown).
         threads: Number of threads allocated to this job (None if unknown).
         log_file: Path to the job's log file (parsed from snakemake log directive).
+        external_jobid: External executor job id/ARN (e.g. AWS Batch), if remote.
+        executor: Remote executor identifier (e.g. "aws-batch"), if applicable.
+        region: Cloud region, used to build console deep links (if known).
+        log_stream: Backend log stream identifier (e.g. CloudWatch stream), if known.
+        queued_at: Epoch seconds the job entered the remote queue, if known. For a
+            remote job, start_time is the true execution start, so the difference
+            is the queue wait.
+        queue: The remote queue / compute environment the job was routed to, if known.
     """
 
     rule: str
@@ -58,6 +66,24 @@ class JobInfo:
     input_size: int | None = None
     threads: int | None = None
     log_file: Path | None = None
+    external_jobid: str | None = None
+    executor: str | None = None
+    region: str | None = None
+    log_stream: str | None = None
+    queued_at: float | None = None
+    queue: str | None = None
+
+    @property
+    def queue_wait(self) -> float | None:
+        """Seconds spent queued before execution began (remote jobs only).
+
+        Returns:
+            start_time - queued_at when both are known and non-negative, else None.
+        """
+        if self.queued_at is None or self.start_time is None:
+            return None
+        wait = self.start_time - self.queued_at
+        return wait if wait >= 0 else None
 
     @property
     def elapsed(self) -> float | None:
@@ -663,6 +689,7 @@ class WorkflowProgress:
         failed_jobs_list: List of failed job details (for --keep-going).
         incomplete_jobs_list: List of jobs that were in progress when workflow was interrupted.
         running_jobs: List of currently running jobs.
+        queued_jobs_list: List of jobs queued on a remote executor (awaiting a node).
         recent_completions: List of recently completed jobs.
         start_time: Unix timestamp when workflow started.
         log_file: Path to the current snakemake log file.
@@ -678,6 +705,7 @@ class WorkflowProgress:
     running_jobs: list[JobInfo] = field(default_factory=list)
     recent_completions: list[JobInfo] = field(default_factory=list)
     pending_jobs_list: list[JobInfo] = field(default_factory=list)
+    queued_jobs_list: list[JobInfo] = field(default_factory=list)
     start_time: float | None = None
     log_file: Path | None = None
 
@@ -707,13 +735,14 @@ class WorkflowProgress:
 
     @property
     def pending_jobs(self) -> int:
-        """Number of jobs not yet started (excludes failed, running, and incomplete)."""
+        """Number of jobs not yet started (excludes failed, running, queued, incomplete)."""
         return max(
             0,
             self.total_jobs
             - self.completed_jobs
             - self.failed_jobs
             - len(self.running_jobs)
+            - len(self.queued_jobs_list)
             - len(self.incomplete_jobs_list),
         )
 

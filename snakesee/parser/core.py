@@ -1305,6 +1305,7 @@ def parse_workflow_state(
                 rule=ij.rule or "unknown",
                 start_time=ij.start_time,
                 output_file=ij.output_file,
+                external_jobid=ij.external_jobid,
             )
             for ij in backend.iterate_incomplete_jobs(min_start_time=start_time)
         ]

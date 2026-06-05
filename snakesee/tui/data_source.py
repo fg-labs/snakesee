@@ -694,6 +694,38 @@ class WorkflowDataSource:
                 )
                 break
 
+    def _handle_job_queued_event(self, event: SnakeseeEvent) -> None:
+        """Handle JOB_QUEUED event - mark a remote job as queued (awaiting a node).
+
+        The registry already transitioned the job to QUEUED via ``apply_event``;
+        here we just ensure a job record exists with the rule name and remote
+        fields so it appears in the queued list. Queued jobs are deliberately not
+        added to ``running_jobs`` — that is the whole point of the distinction.
+        """
+        from snakesee.state.job_registry import Job
+        from snakesee.state.job_registry import JobStatus
+
+        if event.job_id is None:
+            return
+        job_id_str = str(event.job_id)
+
+        existing = self._workflow_state.jobs.get_by_job_id(job_id_str)
+        if existing is None:
+            new_job = Job(
+                key=job_id_str,
+                rule=event.rule_name or "unknown",
+                status=JobStatus.QUEUED,
+                job_id=job_id_str,
+                wildcards=dict(event.wildcards) if event.wildcards else {},
+                threads=event.threads,
+                external_jobid=event.external_jobid,
+                executor=event.executor,
+                region=event.region,
+                log_stream=event.log_stream,
+                queued_at=event.queued_at if event.queued_at is not None else event.timestamp,
+            )
+            self._workflow_state.jobs.add(new_job)
+
     def _handle_job_started_event(
         self,
         event: SnakeseeEvent,
@@ -706,10 +738,15 @@ class WorkflowDataSource:
             return
         job_id_str = str(event.job_id)
 
+        # For a remote job the executor reports the true execution start; prefer it
+        # over the event emission time so elapsed/duration/queue_wait exclude queue
+        # wait. Local jobs have no started_at and fall back to the event timestamp.
+        start = event.started_at if event.started_at is not None else event.timestamp
+
         # Transition job from SUBMITTED to RUNNING
         registry_job = self._workflow_state.jobs.get_by_job_id(job_id_str)
         if registry_job is not None:
-            registry_job.start_time = event.timestamp
+            registry_job.start_time = start
             self._workflow_state.jobs.set_status(registry_job, JobStatus.RUNNING)
 
         threads = event.threads or (registry_job.threads if registry_job else None)
@@ -718,7 +755,7 @@ class WorkflowDataSource:
                 running_jobs[i] = JobInfo(
                     rule=job.rule,
                     job_id=job.job_id,
-                    start_time=event.timestamp,
+                    start_time=start,
                     end_time=job.end_time,
                     output_file=job.output_file,
                     wildcards=event.wildcards_dict or job.wildcards,
@@ -735,7 +772,7 @@ class WorkflowDataSource:
                 JobInfo(
                     rule=rule,
                     job_id=job_id_str,
-                    start_time=event.timestamp,
+                    start_time=start,
                     wildcards=event.wildcards_dict,
                     threads=threads,
                 )
@@ -828,6 +865,13 @@ class WorkflowDataSource:
             wildcards=event.wildcards_dict,
         )
 
+        # For remote jobs, record the queue wait separately from execution time.
+        # The registry job carries queued_at/start_time/queue (the event may not).
+        if job is not None and job.queue_wait is not None:
+            self._workflow_state.rules.record_queue_wait(
+                event.rule_name, job.queue_wait, queue=job.queue
+            )
+
         # Mark as recorded
         if job is not None:
             job.stats_recorded = True
@@ -890,7 +934,9 @@ class WorkflowDataSource:
         """Apply event updates to enhance progress accuracy.
 
         Events from the logger plugin provide more accurate timing and
-        status information than log parsing.
+        status information than log parsing. For remote executors this also
+        populates ``queued_jobs_list`` (jobs awaiting a node) and keeps those
+        jobs out of ``running_jobs``.
 
         Args:
             progress: The current workflow progress from parsing.
@@ -918,6 +964,8 @@ class WorkflowDataSource:
                     new_completed = event.completed_jobs
             elif event.event_type == EventType.JOB_SUBMITTED:
                 self._handle_job_submitted_event(event, new_running_jobs)
+            elif event.event_type == EventType.JOB_QUEUED:
+                self._handle_job_queued_event(event)
             elif event.event_type == EventType.JOB_STARTED:
                 self._handle_job_started_event(event, new_running_jobs)
             elif event.event_type == EventType.JOB_FINISHED:
@@ -971,6 +1019,19 @@ class WorkflowDataSource:
                 new_running_jobs, all_completed, new_failed_list
             )
 
+        # Remote jobs that are queued (submitted to the executor, awaiting a node)
+        # are tracked separately so they don't masquerade as RUNNING. A job the log
+        # parser thinks is "running" but the registry knows is QUEUED is filtered
+        # out of the running list here.
+        queued_jobs_list = self._workflow_state.jobs.queued_job_infos()
+        queued_ids = {job.job_id for job in queued_jobs_list if job.job_id}
+        if queued_ids:
+            new_running_jobs = [j for j in new_running_jobs if j.job_id not in queued_ids]
+
+        # Fill remote fields (external id, links, queue timing) onto running jobs
+        # from the registry — log-parsed/started JobInfos don't carry them.
+        new_running_jobs = [self._enrich_remote_fields(job) for job in new_running_jobs]
+
         # Return updated progress
         return WorkflowProgress(
             workflow_dir=progress.workflow_dir,
@@ -982,8 +1043,36 @@ class WorkflowDataSource:
             running_jobs=new_running_jobs,
             recent_completions=new_completions,
             pending_jobs_list=pending_jobs_list,
+            queued_jobs_list=queued_jobs_list,
             start_time=progress.start_time,
             log_file=progress.log_file,
+        )
+
+    def _enrich_remote_fields(self, job: JobInfo) -> JobInfo:
+        """Return a copy of ``job`` with remote fields filled in from the registry.
+
+        Log-parsed and event-constructed running JobInfos don't carry the external
+        id / executor / region / log stream; the registry does. When the registry
+        has them for this job and the JobInfo lacks them, merge them in so the
+        running view can show the external id and links.
+        """
+        if job.job_id is None:
+            return job
+        registry_job = self._workflow_state.jobs.get_by_job_id(job.job_id)
+        if registry_job is None or registry_job.external_jobid is None:
+            return job
+        from dataclasses import replace
+
+        # Per-field merge that prefers values already on the JobInfo, so this never
+        # clobbers job-specific data and also backfills any partially-missing fields.
+        return replace(
+            job,
+            external_jobid=job.external_jobid or registry_job.external_jobid,
+            executor=job.executor or registry_job.executor,
+            region=job.region or registry_job.region,
+            log_stream=job.log_stream or registry_job.log_stream,
+            queue=job.queue or registry_job.queue,
+            queued_at=job.queued_at if job.queued_at is not None else registry_job.queued_at,
         )
 
     def _update_rule_stats_from_completions(self, progress: WorkflowProgress) -> None:
@@ -1017,6 +1106,13 @@ class WorkflowDataSource:
                 wildcards=dict(registry_job.wildcards) if registry_job.wildcards else None,
                 input_size=registry_job.input_size,
             )
+
+            # For remote jobs, record the queue wait separately from execution time.
+            queue_wait = registry_job.queue_wait
+            if queue_wait is not None:
+                self._workflow_state.rules.record_queue_wait(
+                    registry_job.rule, queue_wait, queue=registry_job.queue
+                )
 
             # Mark as recorded for deduplication
             registry_job.stats_recorded = True

@@ -23,6 +23,7 @@ class JobStatus(Enum):
 
     PENDING = "pending"
     SUBMITTED = "submitted"
+    QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -47,6 +48,12 @@ class Job:
         threads: Number of threads allocated.
         input_size: Total input file size in bytes.
         log_file: Path to job's log file.
+        external_jobid: External executor job id/ARN (e.g. AWS Batch), if remote.
+        executor: Remote executor identifier (e.g. "aws-batch"), if applicable.
+        region: Cloud region, used to build console deep links (if known).
+        log_stream: Backend log stream identifier (e.g. CloudWatch stream), if known.
+        queued_at: Epoch seconds the job entered the remote queue, if known.
+        queue: The remote queue / compute environment the job was routed to, if known.
     """
 
     key: str
@@ -59,7 +66,26 @@ class Job:
     threads: int | None = None
     input_size: int | None = None
     log_file: Path | None = None
+    external_jobid: str | None = None
+    executor: str | None = None
+    region: str | None = None
+    log_stream: str | None = None
+    queued_at: float | None = None
+    queue: str | None = None
     stats_recorded: bool = False
+
+    @property
+    def queue_wait(self) -> float | None:
+        """Seconds spent queued before execution began (remote jobs only).
+
+        For a remote job, ``start_time`` is the true execution start (from the
+        executor) and ``queued_at`` is when it entered the queue, so their
+        difference is the queue wait. Returns None when either is unknown.
+        """
+        if self.queued_at is None or self.start_time is None:
+            return None
+        wait = self.start_time - self.queued_at
+        return wait if wait >= 0 else None
 
     @property
     def elapsed(self) -> float | None:
@@ -92,6 +118,12 @@ class Job:
             input_size=self.input_size,
             threads=self.threads,
             log_file=self.log_file,
+            external_jobid=self.external_jobid,
+            executor=self.executor,
+            region=self.region,
+            log_stream=self.log_stream,
+            queued_at=self.queued_at,
+            queue=self.queue,
         )
 
     @classmethod
@@ -122,6 +154,12 @@ class Job:
             threads=job_info.threads,
             input_size=job_info.input_size,
             log_file=job_info.log_file,
+            external_jobid=job_info.external_jobid,
+            executor=job_info.executor,
+            region=job_info.region,
+            log_stream=job_info.log_stream,
+            queued_at=job_info.queued_at,
+            queue=job_info.queue,
         )
 
 
@@ -257,6 +295,11 @@ class JobRegistry:
         with self._lock:
             return [self._jobs[key] for key in self._by_status[JobStatus.SUBMITTED]]
 
+    def queued(self) -> list[Job]:
+        """Get all jobs queued on a remote executor (submitted, awaiting a node)."""
+        with self._lock:
+            return [self._jobs[key] for key in self._by_status[JobStatus.QUEUED]]
+
     def pending(self) -> list[Job]:
         """Get all pending jobs (not yet submitted)."""
         with self._lock:
@@ -288,6 +331,10 @@ class JobRegistry:
     def submitted_job_infos(self) -> list[JobInfo]:
         """Get submitted jobs as JobInfo for backward compatibility."""
         return [job.to_job_info() for job in self.submitted()]
+
+    def queued_job_infos(self) -> list[JobInfo]:
+        """Get queued (remote, awaiting node) jobs as JobInfo."""
+        return [job.to_job_info() for job in self.queued()]
 
     def clear(self) -> None:
         """Clear all jobs from the registry."""
@@ -363,6 +410,7 @@ class JobRegistry:
         # These don't have job_id/rule_name and would create synthetic "unknown" jobs
         if event.event_type not in {
             EventType.JOB_SUBMITTED,
+            EventType.JOB_QUEUED,
             EventType.JOB_STARTED,
             EventType.JOB_FINISHED,
             EventType.JOB_ERROR,
@@ -396,25 +444,61 @@ class JobRegistry:
                 if event.threads:
                     job.threads = event.threads
 
+            # Carry remote-executor enrichment onto the job whenever present, so
+            # the external id / links / queue timing survive across event types.
+            self._apply_remote_fields(job, event)
+
             old_status = job.status
 
-            # Update based on event type
+            # Update based on event type. For remote jobs the executor supplies
+            # the true execution-window timestamps (started_at/stopped_at); prefer
+            # them over the event emission time so duration excludes queue wait.
             if event.event_type == EventType.JOB_SUBMITTED:
                 job.status = JobStatus.SUBMITTED
+            elif event.event_type == EventType.JOB_QUEUED:
+                # Only move *forward* into QUEUED. Remote event streams can deliver
+                # out of order or re-deliver; a stale JOB_QUEUED arriving after the
+                # job already started/finished must not demote it back to QUEUED.
+                if job.status in (JobStatus.PENDING, JobStatus.SUBMITTED):
+                    job.status = JobStatus.QUEUED
+                # The queue timestamp is valid history regardless of the transition;
+                # if the executor didn't supply one, the event time is the best proxy.
+                if job.queued_at is None:
+                    job.queued_at = (
+                        event.queued_at if event.queued_at is not None else event.timestamp
+                    )
             elif event.event_type == EventType.JOB_STARTED:
                 job.status = JobStatus.RUNNING
-                job.start_time = event.timestamp
+                job.start_time = (
+                    event.started_at if event.started_at is not None else event.timestamp
+                )
                 if event.threads:
                     job.threads = event.threads
             elif event.event_type == EventType.JOB_FINISHED:
                 job.status = JobStatus.COMPLETED
-                job.end_time = event.timestamp
+                job.end_time = event.stopped_at if event.stopped_at is not None else event.timestamp
             elif event.event_type == EventType.JOB_ERROR:
                 job.status = JobStatus.FAILED
-                job.end_time = event.timestamp
+                job.end_time = event.stopped_at if event.stopped_at is not None else event.timestamp
 
             self._update_indexes_unlocked(job, old_status)
             return job
+
+    @staticmethod
+    def _apply_remote_fields(job: Job, event: SnakeseeEvent) -> None:
+        """Copy remote-executor fields from an event onto a job (when present)."""
+        if event.external_jobid is not None:
+            job.external_jobid = event.external_jobid
+        if event.executor is not None:
+            job.executor = event.executor
+        if event.region is not None:
+            job.region = event.region
+        if event.log_stream is not None:
+            job.log_stream = event.log_stream
+        if event.queue is not None:
+            job.queue = event.queue
+        if event.queued_at is not None and job.queued_at is None:
+            job.queued_at = event.queued_at
 
     def store_threads(self, job_id: str, threads: int) -> None:
         """Store thread count for a job by job_id.

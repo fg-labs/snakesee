@@ -38,6 +38,15 @@ class TestSnakeseeEvent:
         assert event.timestamp == 1234567890.123
         assert event.job_id is None
 
+    def test_event_is_immutable(self) -> None:
+        """Test that events are frozen — mutation after creation must raise."""
+        event = SnakeseeEvent(
+            event_type=EventType.PROGRESS,
+            timestamp=1234567890.123,
+        )
+        with pytest.raises(AttributeError):
+            event.timestamp = 0.0  # type: ignore[misc]
+
     def test_full_job_event(self) -> None:
         """Test creating event with all job-related fields."""
         event = SnakeseeEvent(
@@ -115,6 +124,16 @@ class TestSnakeseeEvent:
         assert event.job_id == 42
         assert event.rule_name == "align"
         assert event.wildcards == {"sample": "A"}
+
+    def test_from_json_ignores_unknown_keys(self) -> None:
+        """Forward compat: unknown keys from a newer build must not raise."""
+        json_str = (
+            '{"event_type":"job_finished","timestamp":1.0,"job_id":7,'
+            '"some_future_field":{"x":1},"another":42}'
+        )
+        event = SnakeseeEvent.from_json(json_str)
+        assert event.event_type == EventType.JOB_FINISHED
+        assert event.job_id == 7
 
     def test_roundtrip(self) -> None:
         """Test that serialization round-trips correctly."""

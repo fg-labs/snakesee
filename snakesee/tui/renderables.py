@@ -13,6 +13,8 @@ from rich.text import Text
 if TYPE_CHECKING:
     from rich.console import RenderableType
 
+    from snakesee.models import JobInfo
+
 from snakesee.constants import DEFAULT_REFRESH_RATE
 from snakesee.constants import MIN_REFRESH_RATE
 from snakesee.events import EventReader
@@ -30,6 +32,48 @@ FG_GREEN = "#38b44a"
 
 # Fulcrum Genomics logo path (easter egg)
 FG_LOGO_PATH = Path(__file__).parent.parent / "assets" / "logo.png"
+
+
+def make_remote_job_info(job: "JobInfo") -> list[str]:
+    """Build display lines describing a remote job's external identifier and links.
+
+    For a job that ran on a remote executor (e.g. AWS Batch), this surfaces the
+    external job id and, when enough information is available, deep links to the
+    AWS console and CloudWatch logs. It degrades gracefully: a bare job id with
+    no region yields just the id line; a local job yields no lines at all.
+
+    Args:
+        job: The job to describe.
+
+    Returns:
+        A list of text lines (empty if the job has no external identifier).
+    """
+    if not job.external_jobid:
+        return []
+
+    from snakesee.remote_links import batch_console_url
+    from snakesee.remote_links import cloudwatch_url
+
+    label = job.executor or "remote"
+    lines = [f"{label} job: {job.external_jobid}"]
+
+    if job.queue is not None:
+        lines.append(f"  queue:   {job.queue}")
+
+    # Queue wait is distinct from run time: it's how long the job waited for a node.
+    queue_wait = job.queue_wait
+    if queue_wait is not None:
+        lines.append(f"  queued for: {format_duration(queue_wait)}")
+
+    console = batch_console_url(job.external_jobid, region=job.region)
+    if console is not None:
+        lines.append(f"  console: {console}")
+
+    logs = cloudwatch_url(job.log_stream, region=job.region)
+    if logs is not None:
+        lines.append(f"  logs:    {logs}")
+
+    return lines
 
 
 def _truncate_path(path: str, max_len: int) -> str:
@@ -95,6 +139,13 @@ def make_header(
     if progress.elapsed_seconds is not None:
         header_text.append("  │  Elapsed: ")
         header_text.append(format_duration(progress.elapsed_seconds), style=FG_BLUE)
+
+    # Remote executors can have jobs queued (awaiting a node) but not yet running;
+    # surface that count so a "running" workflow waiting on the queue is honest.
+    queued_count = len(progress.queued_jobs_list)
+    if queued_count > 0:
+        header_text.append("  │  Queued: ")
+        header_text.append(str(queued_count), style="bold yellow")
 
     if paused:
         header_text.append("  │  ")

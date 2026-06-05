@@ -454,11 +454,22 @@ class SnakeseeApp(App[None]):
         if event.cursor_row >= len(jobs):
             return
         job = jobs[event.cursor_row]
+
+        # Remote jobs (e.g. AWS Batch) may have no local log file but still carry
+        # an external id + console/CloudWatch links worth showing.
+        from snakesee.tui.renderables import make_remote_job_info
+
+        header_lines = make_remote_job_info(job)
+
         log_path = job.log_file
         if log_path is None:
+            if not header_lines:
+                return
+            # No local log, but remote info is available — show just that.
+            self.push_screen(JobLogScreen(None, [], header_lines=header_lines))
             return
         lines = self._data.read_log_tail(log_path, max_lines=500)
-        self.push_screen(JobLogScreen(log_path, lines))
+        self.push_screen(JobLogScreen(log_path, lines, header_lines=header_lines))
 
     def __init__(
         self,
