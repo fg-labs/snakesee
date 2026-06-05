@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from rich.text import Text
+
 from snakesee import remote_termination
 from snakesee.remote_termination import CONFIDENCE_HIGH
 from snakesee.remote_termination import CONFIDENCE_LOW
 from snakesee.remote_termination import SOURCE_AWS_INSTANCE_STATE
+from snakesee.remote_termination import SOURCE_EVENTBRIDGE
 from snakesee.remote_termination import SOURCE_STATUS_REASON
 from snakesee.remote_termination import TERM_OOM
 from snakesee.remote_termination import TERM_SPOT
@@ -223,3 +226,126 @@ class TestFormatTerminationSource:
     def test_empty_source_yields_none(self) -> None:
         # An empty string must not render a dangling "via ".
         assert format_termination_source("") is None
+
+
+class TestSourceDisplay:
+    """The termination source renders as a dimmed parenthetical on the marker line."""
+
+    @staticmethod
+    def _marker_line(lines: list[Text]) -> Text:
+        marker = next((line for line in lines if "spot interrupted" in line.plain), None)
+        assert marker is not None, f"no marker line in {[line.plain for line in lines]}"
+        return marker
+
+    def test_structured_source_rendered_dimmed(self) -> None:
+        from snakesee.models import JobInfo
+        from snakesee.tui.renderables import make_remote_job_info
+
+        job = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            termination_category=TERM_SPOT,
+            termination_source=SOURCE_AWS_INSTANCE_STATE,
+            termination_confidence=CONFIDENCE_HIGH,
+        )
+        marker = self._marker_line(make_remote_job_info(job))
+        assert marker.plain == "  ⚠ spot interrupted (via EC2 instance state)"
+        # Exactly the parenthetical (with its leading space) is dimmed.
+        dim_spans = [span for span in marker.spans if span.style == "dim"]
+        assert len(dim_spans) == 1
+        assert marker.plain[dim_spans[0].start : dim_spans[0].end] == " (via EC2 instance state)"
+
+    def test_unknown_source_renders_raw_fallback(self) -> None:
+        from snakesee.models import JobInfo
+        from snakesee.tui.renderables import make_remote_job_info
+
+        job = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            termination_category=TERM_SPOT,
+            termination_source=SOURCE_EVENTBRIDGE,  # contract-reserved, no friendly label
+            termination_confidence=CONFIDENCE_HIGH,
+        )
+        marker = self._marker_line(make_remote_job_info(job))
+        assert marker.plain == "  ⚠ spot interrupted (via eventbridge)"
+
+    def test_no_source_no_parenthetical(self) -> None:
+        from snakesee.models import JobInfo
+        from snakesee.tui.renderables import make_remote_job_info
+
+        job = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            termination_category=TERM_SPOT,
+            termination_confidence=CONFIDENCE_HIGH,
+        )
+        marker = self._marker_line(make_remote_job_info(job))
+        assert marker.plain == "  ⚠ spot interrupted"
+        assert not marker.spans
+
+    def test_orphaned_source_not_rendered(self) -> None:
+        # A source with no usable category (no marker) is provenance with
+        # nothing to attribute — deliberately dropped (spec §2).
+        from snakesee.models import JobInfo
+        from snakesee.tui.renderables import make_remote_job_info
+
+        job = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            termination_source=SOURCE_AWS_INSTANCE_STATE,
+        )
+        lines = make_remote_job_info(job)
+        assert not any("via" in line.plain for line in lines)
+
+    def test_unknown_category_orphans_source(self) -> None:
+        from snakesee.models import JobInfo
+        from snakesee.tui.renderables import make_remote_job_info
+
+        job = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            termination_category=TERM_UNKNOWN,
+            termination_source=SOURCE_AWS_INSTANCE_STATE,
+            termination_confidence=CONFIDENCE_HIGH,
+        )
+        lines = make_remote_job_info(job)
+        assert not any("via" in line.plain for line in lines)
+
+    def test_reader_fallback_labeled_status_reason_text(self) -> None:
+        # snakesee's own string heuristic inspects status_reason, so it carries
+        # the same label as the executor's status_reason source — by design.
+        from snakesee.models import JobInfo
+        from snakesee.tui.renderables import make_remote_job_info
+
+        job = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            status_reason="Spot interruption: capacity reclaimed",
+        )
+        marker = self._marker_line(make_remote_job_info(job))
+        assert marker.plain == "  possibly spot interrupted (via status-reason text)"
+        assert any(span.style == "dim" for span in marker.spans)
+
+    def test_structured_source_wins_over_fallback_eligible_reason(self) -> None:
+        # Both a structured classification AND a spot-matching status_reason:
+        # the structured source labels the marker; the heuristic never runs.
+        from snakesee.models import JobInfo
+        from snakesee.tui.renderables import make_remote_job_info
+
+        job = JobInfo(
+            rule="align",
+            job_id="7",
+            external_jobid="abc",
+            status_reason="Spot interruption: capacity reclaimed",
+            termination_category=TERM_SPOT,
+            termination_source=SOURCE_AWS_INSTANCE_STATE,
+            termination_confidence=CONFIDENCE_HIGH,
+        )
+        marker = self._marker_line(make_remote_job_info(job))
+        assert marker.plain == "  ⚠ spot interrupted (via EC2 instance state)"

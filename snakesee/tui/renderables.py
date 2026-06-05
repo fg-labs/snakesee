@@ -84,16 +84,27 @@ def make_remote_job_info(job: "JobInfo") -> list[Text]:
     # Prefer the executor's structured termination classification (rendered with
     # confidence). Fall back to snakesee's own low-confidence string heuristic only
     # when no structured category arrived (e.g. an older executor).
+    from snakesee.remote_termination import SOURCE_STATUS_REASON
     from snakesee.remote_termination import format_termination_marker
+    from snakesee.remote_termination import format_termination_source
 
     marker = format_termination_marker(job.termination_category, job.termination_confidence)
+    # Provenance only ever annotates a rendered marker: a source arriving with
+    # no usable category (no marker) has nothing to attribute and is dropped.
+    source = format_termination_source(job.termination_source) if marker is not None else None
     if job.termination_category is None and job.status_reason:
         from snakesee.remote_links import is_spot_interruption
 
         if is_spot_interruption(job.status_reason):
             marker = "possibly spot interrupted"
+            # The reader-side heuristic inspects the same field as the
+            # executor's status_reason source, so it carries the same label.
+            source = format_termination_source(SOURCE_STATUS_REASON)
     if marker is not None:
-        lines.append(Text(f"  {marker}"))
+        marker_line = Text(f"  {marker}")
+        if source is not None:
+            marker_line.append(f" ({source})", style="dim")
+        lines.append(marker_line)
 
     if job.status_reason:
         lines.append(Text(f"  reason: {job.status_reason}"))
