@@ -8,7 +8,7 @@ from typing import Any
 from snakemake_interface_logger_plugins.base import LogHandlerBase
 
 from snakemake_logger_plugin_snakesee.events import EventType, SnakeseeEvent
-from snakemake_logger_plugin_snakesee.remote_adapter import WIRE_KEY, event_from_payload
+from snakemake_logger_plugin_snakesee.remote_adapter import event_from_payload, payload_from_record
 from snakemake_logger_plugin_snakesee.settings import LogHandlerSettings
 from snakemake_logger_plugin_snakesee.writer import EventWriter
 
@@ -19,7 +19,7 @@ except ImportError:
     # Fallback for older versions
     from enum import Enum
 
-    class LogEvent(str, Enum):
+    class LogEvent(str, Enum):  # type: ignore[no-redef]
         """Fallback LogEvent enum for compatibility."""
 
         ERROR = "error"
@@ -53,9 +53,11 @@ class LogHandler(LogHandlerBase):
         elif not isinstance(workflow_dir, Path):
             workflow_dir = Path(workflow_dir)
 
-        # Get settings with defaults if None
+        # Get settings with defaults. self.settings is typed as the base
+        # LogHandlerSettingsBase (or None); narrow to this plugin's concrete
+        # LogHandlerSettings so its event_file/buffer_size fields resolve.
         settings = self.settings
-        if settings is None:
+        if not isinstance(settings, LogHandlerSettings):
             settings = LogHandlerSettings()
 
         event_path = workflow_dir / settings.event_file
@@ -105,11 +107,10 @@ class LogHandler(LogHandlerBase):
         timestamp = time.time()
 
         # Remote executors attach a structured remote-job-state payload to an
-        # ordinary log record (under ``snakesee_remote``) instead of using a
-        # Snakemake LogEvent — the LogEvent enum is fixed upstream and an
-        # executor cannot extend it. Handle that channel first; such records may
-        # have no ``event`` attribute at all.
-        remote_payload = getattr(record, WIRE_KEY, None)
+        # ordinary log record instead of using a Snakemake LogEvent — the
+        # LogEvent enum is fixed upstream and an executor cannot extend it. Handle
+        # that channel first; such records may have no ``event`` attribute at all.
+        remote_payload = payload_from_record(record)
         if remote_payload is not None:
             remote_event = event_from_payload(remote_payload, timestamp)
             if remote_event is not None:

@@ -49,6 +49,9 @@ class SnakeseeEvent:
         queue: The remote queue the job was routed to, if known.
         log_stream: Backend log stream identifier (e.g. CloudWatch stream).
         region: Cloud region, used to build console deep links.
+        termination_category: Why the job died (e.g. "spot", "oom"), if classified.
+        termination_source: Provenance of the classification (e.g. "aws_instance_state").
+        termination_confidence: How sure the producer was ("high" / "low").
     """
 
     event_type: EventType
@@ -78,6 +81,9 @@ class SnakeseeEvent:
     queue: str | None = None
     log_stream: str | None = None
     region: str | None = None
+    termination_category: str | None = None
+    termination_source: str | None = None
+    termination_confidence: str | None = None
 
     def to_json(self) -> str:
         """Serialize to compact JSON string.

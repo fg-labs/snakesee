@@ -54,6 +54,12 @@ class Job:
         log_stream: Backend log stream identifier (e.g. CloudWatch stream), if known.
         queued_at: Epoch seconds the job entered the remote queue, if known.
         queue: The remote queue / compute environment the job was routed to, if known.
+        attempt: Attempt number for a retried/preempted remote job, if known.
+        exit_code: Container/process exit code for a finished remote job, if known.
+        status_reason: Backend-provided reason string (e.g. failure cause), if any.
+        termination_category: Why the job died (e.g. "spot", "oom"), if classified.
+        termination_source: Provenance of the classification (e.g. "aws_instance_state").
+        termination_confidence: How sure the producer was ("high" / "low").
     """
 
     key: str
@@ -72,6 +78,12 @@ class Job:
     log_stream: str | None = None
     queued_at: float | None = None
     queue: str | None = None
+    attempt: int | None = None
+    exit_code: int | None = None
+    status_reason: str | None = None
+    termination_category: str | None = None
+    termination_source: str | None = None
+    termination_confidence: str | None = None
     stats_recorded: bool = False
 
     @property
@@ -124,6 +136,12 @@ class Job:
             log_stream=self.log_stream,
             queued_at=self.queued_at,
             queue=self.queue,
+            attempt=self.attempt,
+            exit_code=self.exit_code,
+            status_reason=self.status_reason,
+            termination_category=self.termination_category,
+            termination_source=self.termination_source,
+            termination_confidence=self.termination_confidence,
         )
 
     @classmethod
@@ -160,6 +178,12 @@ class Job:
             log_stream=job_info.log_stream,
             queued_at=job_info.queued_at,
             queue=job_info.queue,
+            attempt=job_info.attempt,
+            exit_code=job_info.exit_code,
+            status_reason=job_info.status_reason,
+            termination_category=job_info.termination_category,
+            termination_source=job_info.termination_source,
+            termination_confidence=job_info.termination_confidence,
         )
 
 
@@ -497,6 +521,18 @@ class JobRegistry:
             job.log_stream = event.log_stream
         if event.queue is not None:
             job.queue = event.queue
+        if event.attempt is not None:
+            job.attempt = event.attempt
+        if event.exit_code is not None:
+            job.exit_code = event.exit_code
+        if event.status_reason is not None:
+            job.status_reason = event.status_reason
+        if event.termination_category is not None:
+            job.termination_category = event.termination_category
+        if event.termination_source is not None:
+            job.termination_source = event.termination_source
+        if event.termination_confidence is not None:
+            job.termination_confidence = event.termination_confidence
         if event.queued_at is not None and job.queued_at is None:
             job.queued_at = event.queued_at
 

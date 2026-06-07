@@ -4,7 +4,12 @@ import logging
 from typing import Any
 
 from snakemake_logger_plugin_snakesee.events import EventType
-from snakemake_logger_plugin_snakesee.remote_adapter import WIRE_KEY, event_from_payload
+from snakemake_logger_plugin_snakesee.remote_adapter import (
+    NEUTRAL_WIRE_KEY,
+    WIRE_KEY,
+    event_from_payload,
+    payload_from_record,
+)
 
 
 def _payload(**overrides: Any) -> dict[str, Any]:
@@ -57,6 +62,21 @@ class TestEventFromPayload:
         assert event.status_reason == "OOM killed"
         assert event.exit_code == 137
 
+    def test_termination_fields_carried(self) -> None:
+        event = event_from_payload(
+            _payload(
+                phase="failed",
+                termination_category="spot",
+                termination_source="aws_instance_state",
+                termination_confidence="high",
+            ),
+            timestamp=1.0,
+        )
+        assert event is not None
+        assert event.termination_category == "spot"
+        assert event.termination_source == "aws_instance_state"
+        assert event.termination_confidence == "high"
+
     def test_external_id_and_region_carried(self) -> None:
         event = event_from_payload(
             _payload(external_jobid="arn:...:job/abc", region="us-east-1", queue="gv-spot"),
@@ -67,8 +87,32 @@ class TestEventFromPayload:
         assert event.region == "us-east-1"
         assert event.queue == "gv-spot"
 
+    def test_accepts_neutral_v2_schema(self) -> None:
+        # The backend-neutral Tier-D shape (schema_version 2) has identical fields
+        # and must translate to the same event as v1.
+        event = event_from_payload(_payload(schema_version=2, phase="running"), timestamp=1.0)
+        assert event is not None
+        assert event.event_type == EventType.JOB_STARTED
+
+    def test_v1_and_v2_produce_equal_events(self) -> None:
+        # The core Tier-D guarantee: same fields under v1 vs v2 yield identical
+        # events (only the schema_version gate differs). Locks out any future
+        # version-keyed divergence in event_from_payload.
+        fields = dict(
+            phase="succeeded",
+            external_jobid="arn:aws:batch:us-east-1:1:job/abc",
+            started_at=142.0,
+            stopped_at=200.0,
+            exit_code=0,
+            queue="gv-spot",
+            region="us-east-1",
+        )
+        v1 = event_from_payload(_payload(schema_version=1, **fields), timestamp=5.0)
+        v2 = event_from_payload(_payload(schema_version=2, **fields), timestamp=5.0)
+        assert v1 == v2
+
     def test_unsupported_version_returns_none(self) -> None:
-        assert event_from_payload(_payload(schema_version=2), timestamp=1.0) is None
+        assert event_from_payload(_payload(schema_version=3), timestamp=1.0) is None
 
     def test_unknown_phase_returns_none(self) -> None:
         assert event_from_payload(_payload(phase="bogus"), timestamp=1.0) is None
@@ -84,6 +128,27 @@ class _FakeRecord:
     def __init__(self, **attrs: Any) -> None:
         for key, value in attrs.items():
             setattr(self, key, value)
+
+
+class TestPayloadFromRecord:
+    """payload_from_record finds the payload under either wire key."""
+
+    def test_finds_legacy_key(self) -> None:
+        rec = _FakeRecord(**{WIRE_KEY: _payload()})
+        assert payload_from_record(rec) is not None
+
+    def test_finds_neutral_key(self) -> None:
+        rec = _FakeRecord(**{NEUTRAL_WIRE_KEY: _payload(schema_version=2)})
+        assert payload_from_record(rec) is not None
+
+    def test_prefers_neutral_over_legacy(self) -> None:
+        neutral = _payload(schema_version=2, jobid=2)
+        legacy = _payload(schema_version=1, jobid=1)
+        rec = _FakeRecord(**{NEUTRAL_WIRE_KEY: neutral, WIRE_KEY: legacy})
+        assert payload_from_record(rec) is neutral
+
+    def test_none_when_absent(self) -> None:
+        assert payload_from_record(_FakeRecord(event=None)) is None
 
 
 class TestHandlerEmitHook:
@@ -107,6 +172,14 @@ class TestHandlerEmitHook:
     def test_remote_record_emits_event(self, tmp_path: Any) -> None:
         handler = self._make_handler(tmp_path)
         record = _FakeRecord(**{WIRE_KEY: _payload(phase="running")})
+        handler.emit(record)
+        assert len(handler._writer.events) == 1
+        assert handler._writer.events[0].event_type == EventType.JOB_STARTED
+
+    def test_neutral_v2_record_emits_event(self, tmp_path: Any) -> None:
+        # A record carrying the neutral Tier-D key is handled with no other change.
+        handler = self._make_handler(tmp_path)
+        record = _FakeRecord(**{NEUTRAL_WIRE_KEY: _payload(schema_version=2, phase="running")})
         handler.emit(record)
         assert len(handler._writer.events) == 1
         assert handler._writer.events[0].event_type == EventType.JOB_STARTED
