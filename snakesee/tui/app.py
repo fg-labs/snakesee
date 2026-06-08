@@ -514,7 +514,13 @@ class SnakeseeApp(App[None]):
         # Resolve the workflow path once; the header truncates it per frame, so the
         # per-render cost stays a string slice rather than a filesystem resolve().
         self._resolved_workflow_dir = str(workflow_dir.resolve())
-        self.refresh_rate = refresh_rate
+        # Seed the reactive without firing watch_refresh_rate. A plain assignment would
+        # invoke the watcher (whenever refresh_rate differs from the reactive default),
+        # which calls set_interval() before run() has started the event loop, raising
+        # "RuntimeError: no running event loop". on_mount starts the timer once the loop
+        # is running. The ignore works around Textual's stubs typing class-level reactive
+        # access as the value type (float) rather than Reactive[float].
+        self.set_reactive(SnakeseeApp.refresh_rate, refresh_rate)  # type: ignore[arg-type]
 
     def compose(self) -> ComposeResult:
         """Compose the widget tree (header / progress / six tables / summary / footer)."""
@@ -548,10 +554,8 @@ class SnakeseeApp(App[None]):
         self.query_one("#incomplete", DataTable).add_columns("Output File")
         self.query_one("#stats", DataTable).add_columns("Rule", "Thr", "Count", "Avg", "Std Dev")
         self._refresh_panels()
-        # __init__ already triggered watch_refresh_rate which started a timer; stop it
-        # before mounting our own so we don't end up with two interval callbacks racing.
-        if self._refresh_timer is not None:
-            self._refresh_timer.stop()
+        # Start the polling timer now that the event loop is running. __init__ seeds
+        # refresh_rate via set_reactive (no watcher), so this is the only timer created.
         self._refresh_timer = self.set_interval(self.refresh_rate, self._refresh_panels)
         self.add_class(f"-{self.layout_mode.value}")
 
