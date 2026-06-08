@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": true,
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "snakesee",
+      "include-component-in-tag": false,
+      "include-v-in-tag": false
+    },
+    "snakemake-logger-plugin-snakesee": {
+      "release-type": "python",
+      "package-name": "snakemake-logger-plugin-snakesee",
+      "component": "snakesee-logger",
+      "include-v-in-tag": false,
+      "tag-separator": "-"
+    }
+  }
+}
