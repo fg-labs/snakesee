@@ -54,6 +54,23 @@ async def test_refresh_rate_clamped_max(snakemake_dir: Path, tmp_path: Path) -> 
         await pilot.press("q")
 
 
+def test_construct_with_non_default_refresh_rate_no_event_loop(
+    snakemake_dir: Path, tmp_path: Path
+) -> None:
+    """Constructing the app with a non-default refresh rate must not require a running loop.
+
+    The CLI builds ``SnakeseeApp`` synchronously (before ``run()`` starts the event
+    loop) and passes ``refresh`` defaulting to 2.0, which differs from the
+    ``refresh_rate`` reactive's default. A premature reactive watcher that called
+    ``set_interval`` here would raise ``RuntimeError: no running event loop``. This is
+    deliberately a synchronous (non-async) test so no event loop is running, matching
+    the real CLI path.
+    """
+    assert DEFAULT_REFRESH_RATE != 2.0, "test assumes 2.0 differs from the reactive default"
+    app = SnakeseeApp(workflow_dir=tmp_path, refresh_rate=2.0)
+    assert app.refresh_rate == pytest.approx(2.0)
+
+
 async def test_refresh_rate_reset(snakemake_dir: Path, tmp_path: Path) -> None:
     """Pressing '0' resets refresh_rate to DEFAULT_REFRESH_RATE."""
     app = SnakeseeApp(workflow_dir=tmp_path, refresh_rate=15.0)
