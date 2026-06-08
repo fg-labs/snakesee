@@ -91,23 +91,7 @@ uv run pytest
 
 ## Release Process
 
-Releases are automated via GitHub Actions when a SemVer tag is pushed:
-
-```bash
-# Ensure everything is committed and pushed
-git push origin main
-
-# Create and push a tag
-git tag 0.2.0
-git push origin 0.2.0
-```
-
-The CI will automatically:
-1. Run all tests
-2. Build the source distribution
-3. Publish to PyPI
-4. Generate changelog with git-cliff
-5. Create a GitHub release
+Releases are automated with [release-please](https://github.com/googleapis/release-please): merge Conventional Commits to `main`, then merge the auto-generated release PR — release-please bumps the version and changelog, tags, and the existing publish workflows ship to PyPI. See [`RELEASE_STEPS.md`](RELEASE_STEPS.md) for details.
 
 ## Commit Messages
 
