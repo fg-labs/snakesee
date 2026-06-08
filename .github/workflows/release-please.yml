@@ -1,0 +1,41 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+# Least privilege at the top; the job grants only what release-please needs.
+permissions: {}
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    # Do not run on forks; the bot secrets and write scopes are org-only.
+    if: ${{ github.repository_owner == 'fg-labs' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # An App installation token (not GITHUB_TOKEN) so the tag/release this
+      # creates can trigger the tag-driven publish workflows.
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.FG_LABS_BOT_APP_ID }}
+          private-key: ${{ secrets.FG_LABS_BOT_PRIVATE_KEY }}
+          # Constrain the minted token to exactly what release-please needs;
+          # otherwise it inherits the App installation's blanket permissions.
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Run release-please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
