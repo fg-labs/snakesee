@@ -99,23 +99,3 @@ jobs:
           packages-dir: packages/
           skip-existing: true
           verbose: true
-
-  make-github-release:
-    runs-on: ubuntu-latest
-    environment: github
-    permissions:
-      contents: write
-    needs: publish-to-pypi
-    steps:
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
-        with:
-          name: "snakemake-logger-plugin-snakesee ${{ github.ref_name }}"
-          body: |
-            Release of snakemake-logger-plugin-snakesee ${{ github.ref_name }}
-
-            ```bash
-            pip install snakemake-logger-plugin-snakesee
-            ```
-          draft: false
-          prerelease: false
