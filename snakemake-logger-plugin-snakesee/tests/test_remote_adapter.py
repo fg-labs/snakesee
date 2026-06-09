@@ -62,6 +62,21 @@ class TestEventFromPayload:
         assert event.status_reason == "OOM killed"
         assert event.exit_code == 137
 
+    def test_cost_estimate_carried(self) -> None:
+        event = event_from_payload(_payload(phase="succeeded", cost_estimate=0.0456), timestamp=1.0)
+        assert event is not None
+        assert event.cost_estimate == 0.0456
+
+    def test_non_finite_cost_estimate_dropped(self) -> None:
+        # nan/inf must not propagate: a single malformed payload would otherwise
+        # poison JobRegistry.total_cost_estimate(), which sums every non-None value.
+        for bad in ("nan", "inf", "-inf"):
+            event = event_from_payload(
+                _payload(phase="succeeded", cost_estimate=bad), timestamp=1.0
+            )
+            assert event is not None
+            assert event.cost_estimate is None, f"{bad!r} should be dropped"
+
     def test_termination_fields_carried(self) -> None:
         event = event_from_payload(
             _payload(

@@ -1,6 +1,8 @@
 """Data models for workflow monitoring."""
 
 import logging
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field
 from enum import Enum
@@ -61,6 +63,7 @@ class JobInfo:
         termination_category: Why the job died (e.g. "spot", "oom"), if classified.
         termination_source: Provenance of the classification (e.g. "aws_instance_state").
         termination_confidence: How sure the producer was ("high" / "low").
+        cost_estimate: Estimated USD cost of the job (list/market price, not billed).
     """
 
     rule: str
@@ -84,6 +87,17 @@ class JobInfo:
     termination_category: str | None = None
     termination_source: str | None = None
     termination_confidence: str | None = None
+    cost_estimate: float | None = None
+
+    def __post_init__(self) -> None:
+        """Drop a non-finite cost_estimate so nan/inf cannot poison cost aggregates.
+
+        Mirrors ``_opt_float`` in the remote logger adapter: every producer of this model
+        (direct construction as well as event ingestion) enforces the same finite-or-None
+        invariant that ``JobRegistry.total_cost_estimate()`` relies on.
+        """
+        if self.cost_estimate is not None and not math.isfinite(self.cost_estimate):
+            object.__setattr__(self, "cost_estimate", None)
 
     @property
     def queue_wait(self) -> float | None:
@@ -687,7 +701,7 @@ class TimeEstimate:
         )
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class WorkflowProgress:
     """
     Current state of workflow progress.
@@ -698,28 +712,52 @@ class WorkflowProgress:
         total_jobs: Total number of jobs in the workflow.
         completed_jobs: Number of jobs completed.
         failed_jobs: Number of jobs that failed.
-        failed_jobs_list: List of failed job details (for --keep-going).
-        incomplete_jobs_list: List of jobs that were in progress when workflow was interrupted.
-        running_jobs: List of currently running jobs.
-        queued_jobs_list: List of jobs queued on a remote executor (awaiting a node).
-        recent_completions: List of recently completed jobs.
+        failed_jobs_list: Failed job details (for --keep-going).
+        incomplete_jobs_list: Jobs that were in progress when the workflow was interrupted.
+        running_jobs: Currently running jobs.
+        queued_jobs_list: Jobs queued on a remote executor (awaiting a node).
+        recent_completions: Recently completed jobs.
         start_time: Unix timestamp when workflow started.
         log_file: Path to the current snakemake log file.
     """
+
+    # Job collections are typed as read-only ``Sequence`` and normalized to tuples in
+    # __post_init__ so this frozen snapshot is immutable all the way down: callers can still
+    # pass lists at construction (a list is a Sequence), but the stored value cannot be
+    # mutated in place. JobInfo is itself frozen, so the snapshot is deeply immutable.
+    _JOB_SEQUENCE_FIELDS: ClassVar[tuple[str, ...]] = (
+        "failed_jobs_list",
+        "incomplete_jobs_list",
+        "running_jobs",
+        "recent_completions",
+        "pending_jobs_list",
+        "queued_jobs_list",
+    )
 
     workflow_dir: Path
     status: WorkflowStatus
     total_jobs: int
     completed_jobs: int
     failed_jobs: int = 0
-    failed_jobs_list: list[JobInfo] = field(default_factory=list)
-    incomplete_jobs_list: list[JobInfo] = field(default_factory=list)
-    running_jobs: list[JobInfo] = field(default_factory=list)
-    recent_completions: list[JobInfo] = field(default_factory=list)
-    pending_jobs_list: list[JobInfo] = field(default_factory=list)
-    queued_jobs_list: list[JobInfo] = field(default_factory=list)
+    failed_jobs_list: Sequence[JobInfo] = ()
+    incomplete_jobs_list: Sequence[JobInfo] = ()
+    running_jobs: Sequence[JobInfo] = ()
+    recent_completions: Sequence[JobInfo] = ()
+    pending_jobs_list: Sequence[JobInfo] = ()
+    queued_jobs_list: Sequence[JobInfo] = ()
     start_time: float | None = None
     log_file: Path | None = None
+    total_cost_estimate: float | None = None
+
+    def __post_init__(self) -> None:
+        """Freeze each job collection into a tuple and drop a non-finite total cost."""
+        for field_name in self._JOB_SEQUENCE_FIELDS:
+            value = getattr(self, field_name)
+            if not isinstance(value, tuple):
+                object.__setattr__(self, field_name, tuple(value))
+        # Drop a non-finite workflow total so nan/inf cannot poison the header summary.
+        if self.total_cost_estimate is not None and not math.isfinite(self.total_cost_estimate):
+            object.__setattr__(self, "total_cost_estimate", None)
 
     @property
     def percent_complete(self) -> float:

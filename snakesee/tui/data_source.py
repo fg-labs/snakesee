@@ -14,6 +14,7 @@ import logging
 import math
 import time
 from collections.abc import Iterable
+from collections.abc import Sequence
 from contextlib import AbstractContextManager
 from contextlib import nullcontext
 from pathlib import Path
@@ -279,6 +280,10 @@ class WorkflowDataSource:
     def thread_stats_dict(self) -> "dict[str, ThreadTimingStats]":
         """Return per-rule, per-thread timing statistics."""
         return self._workflow_state.rules.to_thread_stats_dict()
+
+    def cost_by_rule(self) -> dict[str, float]:
+        """Return summed estimated cost per rule (empty when no cost data)."""
+        return self._workflow_state.jobs.cost_by_rule()
 
     # ------------------------------------------------------------------ logs
     def refresh_log_list(self) -> None:
@@ -900,9 +905,9 @@ class WorkflowDataSource:
 
     def _compute_pending_jobs_from_scheduled(
         self,
-        running_jobs: list[JobInfo],
-        completions: list[JobInfo],
-        failed_jobs: list[JobInfo] | None = None,
+        running_jobs: Sequence[JobInfo],
+        completions: Sequence[JobInfo],
+        failed_jobs: Sequence[JobInfo] | None = None,
     ) -> list[JobInfo]:
         """Compute pending jobs by subtracting running/completed/failed from all scheduled.
 
@@ -1046,6 +1051,7 @@ class WorkflowDataSource:
             queued_jobs_list=queued_jobs_list,
             start_time=progress.start_time,
             log_file=progress.log_file,
+            total_cost_estimate=self._workflow_state.jobs.total_cost_estimate(),
         )
 
     def _enrich_remote_fields(self, job: JobInfo) -> JobInfo:
@@ -1080,6 +1086,9 @@ class WorkflowDataSource:
             termination_source=job.termination_source or registry_job.termination_source,
             termination_confidence=(
                 job.termination_confidence or registry_job.termination_confidence
+            ),
+            cost_estimate=(
+                job.cost_estimate if job.cost_estimate is not None else registry_job.cost_estimate
             ),
         )
 
@@ -1126,18 +1135,18 @@ class WorkflowDataSource:
             registry_job.stats_recorded = True
 
     # --------------------------------------------------- filter / sort helpers
-    def filter_jobs(self, jobs: list[JobInfo], filter_text: str | None) -> list[JobInfo]:
+    def filter_jobs(self, jobs: Sequence[JobInfo], filter_text: str | None) -> list[JobInfo]:
         """Filter jobs by rule name if filter is active.
 
         Args:
-            jobs: List of jobs to filter.
+            jobs: Jobs to filter.
             filter_text: Text to filter by (case-insensitive substring match).
 
         Returns:
             Filtered list of jobs (all jobs if filter_text is empty).
         """
         if not filter_text:
-            return jobs
+            return list(jobs)
 
         return [j for j in jobs if filter_text.lower() in j.rule.lower()]
 

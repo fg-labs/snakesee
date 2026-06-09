@@ -198,7 +198,7 @@ class TestDataSourceQueuedRouting:
         result = ds.apply_events_to_progress(
             base, [_event(EventType.JOB_STARTED, timestamp=150.0, job_id=7, started_at=142.0)]
         )
-        assert result.queued_jobs_list == []
+        assert result.queued_jobs_list == ()
         assert [j.job_id for j in result.running_jobs] == ["7"]
 
     def test_running_jobinfo_uses_true_started_at(

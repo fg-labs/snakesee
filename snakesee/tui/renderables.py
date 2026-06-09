@@ -34,6 +34,11 @@ FG_GREEN = "#38b44a"
 FG_LOGO_PATH = Path(__file__).parent.parent / "assets" / "logo.png"
 
 
+def format_cost(usd: float) -> str:
+    """Format a USD cost: 4 decimals under $1 (per-job costs are tiny), else 2."""
+    return f"${usd:.4f}" if usd < 1 else f"${usd:,.2f}"
+
+
 def make_remote_job_info(job: "JobInfo") -> list[str]:
     """Build display lines describing a remote job's external identifier and links.
 
@@ -88,6 +93,9 @@ def make_remote_job_info(job: "JobInfo") -> list[str]:
 
     if job.status_reason:
         lines.append(f"  reason: {job.status_reason}")
+
+    if job.cost_estimate is not None:
+        lines.append(f"  est. cost: {format_cost(job.cost_estimate)}")
 
     console = batch_console_url(job.external_jobid, region=job.region)
     if console is not None:
@@ -170,6 +178,12 @@ def make_header(
     if queued_count > 0:
         header_text.append("  │  Queued: ")
         header_text.append(str(queued_count), style="bold yellow")
+
+    # Estimated workflow cost so far (remote executors with cost estimation on).
+    if progress.total_cost_estimate is not None:
+        header_text.append("  │  Cost: ")
+        header_text.append(f"~{format_cost(progress.total_cost_estimate)}", style=FG_GREEN)
+        header_text.append(" (est)", style="dim")
 
     if paused:
         header_text.append("  │  ")
