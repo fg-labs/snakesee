@@ -173,12 +173,13 @@ class TestEventWriter:
         assert parsed.event_type == EventType.WORKFLOW_STARTED
         assert parsed.timestamp == 3.0
 
-    def test_concurrent_write_and_close(self, tmp_path: Path) -> None:
-        """Test that close() during concurrent writes doesn't lose events or raise.
+    def test_concurrent_write_and_close_loses_nothing(self, tmp_path: Path) -> None:
+        """close() during concurrent writes must not lose events or raise.
 
-        Simulates the race condition caused by Snakemake's cleanup calling
-        handler.close() from the main thread while the QueueListener
-        background thread is still delivering events via emit()/write().
+        Reproduces Snakemake's race: cleanup calls handler.close() from the
+        main thread while the QueueListener background thread is still
+        delivering events via emit()/write(). Every event must reach the file
+        regardless of how the close() interleaves with the concurrent writes.
         """
         event_file = tmp_path / "events.jsonl"
         writer = EventWriter(event_file)
@@ -206,26 +207,92 @@ class TestEventWriter:
         # Close from main thread while writer thread is active
         writer.close()
         t.join()
+        # Final close, mirroring snakemake's post-drain / atexit cleanup.
+        writer.close()
 
-        # The initial event plus some subset of the concurrent writes
-        # must be on disk; events arriving after close() are silently
-        # dropped (no crash).
+        # Nothing may be dropped: the initial event plus every concurrent write.
         lines = event_file.read_text().strip().split("\n")
-        assert len(lines) >= 1
-        assert len(lines) <= num_events + 1
+        assert len(lines) == num_events + 1
 
-    def test_write_after_close_is_silent(self, tmp_path: Path) -> None:
-        """Test that write() after close() is silently ignored."""
+    def test_write_after_close_reopens_and_appends(self, tmp_path: Path) -> None:
+        """write() after close() reopens the file and appends (no loss, no raise).
+
+        See ``test_events_delivered_after_close_are_not_lost`` for the
+        snakemake lifecycle this guards against.
+        """
         event_file = tmp_path / "events.jsonl"
         writer = EventWriter(event_file)
         writer.write(SnakeseeEvent(event_type=EventType.WORKFLOW_STARTED, timestamp=1.0))
         writer.close()
 
-        # Write after close should not raise
+        # Write after close must not raise and must not be dropped.
         writer.write(SnakeseeEvent(event_type=EventType.JOB_STARTED, timestamp=2.0, job_id=1))
+        writer.close()
 
         lines = event_file.read_text().strip().split("\n")
-        assert len(lines) == 1
+        assert len(lines) == 2
+
+    def test_events_delivered_after_close_are_not_lost(self, tmp_path: Path) -> None:
+        """Events delivered after close() must be written, not dropped.
+
+        Regression test for silent event loss under load. Snakemake closes
+        file-writing handlers (``cleanup_logfile()``) BEFORE it drains the
+        logging ``QueueListener`` (``stop()``). Every record still queued at
+        that moment is delivered to the handler — and therefore ``write()`` —
+        *after* ``close()`` has run. Those late events must still reach the
+        file; dropping them silently loses the tail of the event stream
+        (job completions, final progress) whenever the listener lags under
+        load, which is exactly what happens on a busy CI runner.
+        """
+        event_file = tmp_path / "events.jsonl"
+        writer = EventWriter(event_file)
+
+        writer.write(SnakeseeEvent(event_type=EventType.WORKFLOW_STARTED, timestamp=1.0))
+        writer.close()  # snakemake cleanup_logfile() closes us first
+
+        # snakemake's QueueListener.stop() now drains queued records to us
+        post_close = [
+            SnakeseeEvent(event_type=EventType.JOB_STARTED, timestamp=2.0, job_id=1),
+            SnakeseeEvent(event_type=EventType.JOB_FINISHED, timestamp=3.0, job_id=1),
+        ]
+        for event in post_close:
+            writer.write(event)
+        writer.close()
+
+        lines = event_file.read_text().strip().split("\n")
+        assert len(lines) == 3, f"expected 3 events, lost some: {lines}"
+        types = [SnakeseeEvent.from_json(line).event_type for line in lines]
+        assert types == [
+            EventType.WORKFLOW_STARTED,
+            EventType.JOB_STARTED,
+            EventType.JOB_FINISHED,
+        ]
+
+    def test_buffered_late_events_flush_on_trailing_close(self, tmp_path: Path) -> None:
+        """With buffer_size > 1, a post-close event must flush on the trailing close().
+
+        Guards the ``_closed`` reset in ``write()``. ``buffer_size`` is
+        configurable (``LogHandlerSettings.buffer_size``); when > 1 a late event
+        is buffered, not flushed immediately, so the reset is what lets the
+        trailing ``close()`` flush it instead of early-returning and dropping it.
+        The ``buffer_size=1`` cases above flush each write immediately and so
+        would still pass even if the reset were missing — this case would not.
+        """
+        event_file = tmp_path / "events.jsonl"
+        writer = EventWriter(event_file, buffer_size=3)
+
+        writer.write(SnakeseeEvent(event_type=EventType.WORKFLOW_STARTED, timestamp=1.0))
+        writer.close()  # flushes the buffered first event
+        assert len(event_file.read_text().strip().split("\n")) == 1
+
+        # Delivered after close() and buffered (buffer not yet full → not flushed).
+        writer.write(SnakeseeEvent(event_type=EventType.JOB_STARTED, timestamp=2.0, job_id=1))
+        assert len(event_file.read_text().strip().split("\n")) == 1
+
+        writer.close()  # trailing close() must flush the buffered late event
+        lines = event_file.read_text().strip().split("\n")
+        assert len(lines) == 2
+        assert SnakeseeEvent.from_json(lines[1]).event_type == EventType.JOB_STARTED
 
     def test_double_close(self, tmp_path: Path) -> None:
         """Test that close() can be called multiple times safely."""

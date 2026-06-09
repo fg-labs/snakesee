@@ -17,7 +17,9 @@ class EventWriter:
 
     Thread safety is critical because Snakemake dispatches log events via a
     ``QueueListener`` background thread, while handler ``close()`` may be
-    called from the main thread during cleanup.
+    called from the main thread during cleanup. Because Snakemake closes the
+    handler *before* it drains that queue, ``write()`` tolerates events that
+    arrive after ``close()`` by reopening the file rather than dropping them.
 
     Attributes:
         path: Path to the event file.
@@ -74,12 +76,23 @@ class EventWriter:
 
         Events are buffered and flushed when the buffer is full.
 
+        Snakemake closes file-writing handlers (``cleanup_logfile()``) *before*
+        it drains the logging ``QueueListener`` (``stop()``), so events can be
+        delivered here after ``close()`` has run. Such a late event re-activates
+        the writer — ``_flush_locked`` reopens the file in append mode via
+        ``_ensure_open`` — rather than being dropped. Dropping them silently
+        loses the tail of the event stream (job completions, final progress)
+        whenever the listener lags under load, e.g. on a busy CI runner. The
+        next ``close()`` (snakemake's or our ``atexit`` hook) flushes and
+        releases the handle again.
+
         Args:
             event: The event to write.
         """
         with self._lock:
-            if self._closed:
-                return
+            # Re-activate if a previous close() ran; the trailing close()
+            # flushes any buffered late events and releases the file handle.
+            self._closed = False
             self._buffer.append(event)
             if len(self._buffer) >= self.buffer_size:
                 self._flush_locked()
