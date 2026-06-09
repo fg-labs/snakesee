@@ -96,11 +96,11 @@ class TestCostDisplay:
     def test_per_job_cost_shown(self) -> None:
         job = JobInfo(rule="align", job_id="7", external_jobid="abc", cost_estimate=0.0123)
         lines = make_remote_job_info(job)
-        assert any("est. cost: $0.0123" in line for line in lines)
+        assert any("est. cost: $0.0123" in line.plain for line in lines)
 
     def test_no_cost_line_when_absent(self) -> None:
         job = JobInfo(rule="align", job_id="7", external_jobid="abc")
-        assert not any("est. cost:" in line for line in make_remote_job_info(job))
+        assert not any("cost" in line.plain for line in make_remote_job_info(job))
 
     def test_header_shows_workflow_cost(self) -> None:
         from io import StringIO

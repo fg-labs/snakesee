@@ -39,13 +39,17 @@ def format_cost(usd: float) -> str:
     return f"${usd:.4f}" if usd < 1 else f"${usd:,.2f}"
 
 
-def make_remote_job_info(job: "JobInfo") -> list[str]:
+def make_remote_job_info(job: "JobInfo") -> list[Text]:
     """Build display lines describing a remote job's external identifier and links.
 
     For a job that ran on a remote executor (e.g. AWS Batch), this surfaces the
     external job id and, when enough information is available, deep links to the
     AWS console and CloudWatch logs. It degrades gracefully: a bare job id with
     no region yields just the id line; a local job yields no lines at all.
+
+    Lines are Rich ``Text`` rather than ``str`` so styling (e.g. the dimmed
+    termination-source parenthetical) survives the job-detail ``RichLog``,
+    which deliberately disables markup to avoid misrendering log content.
 
     Args:
         job: The job to describe.
@@ -60,50 +64,61 @@ def make_remote_job_info(job: "JobInfo") -> list[str]:
     from snakesee.remote_links import cloudwatch_url
 
     label = job.executor or "remote"
-    lines = [f"{label} job: {job.external_jobid}"]
+    lines = [Text(f"{label} job: {job.external_jobid}")]
 
     if job.queue is not None:
-        lines.append(f"  queue:   {job.queue}")
+        lines.append(Text(f"  queue:   {job.queue}"))
 
     # Queue wait is distinct from run time: it's how long the job waited for a node.
     queue_wait = job.queue_wait
     if queue_wait is not None:
-        lines.append(f"  queued for: {format_duration(queue_wait)}")
+        lines.append(Text(f"  queued for: {format_duration(queue_wait)}"))
 
     # Attempt > 1 means the job was retried/preempted; worth surfacing.
     if job.attempt is not None and job.attempt > 1:
-        lines.append(f"  attempt: {job.attempt}")
+        lines.append(Text(f"  attempt: {job.attempt}"))
 
     if job.exit_code is not None:
-        lines.append(f"  exit code: {job.exit_code}")
+        lines.append(Text(f"  exit code: {job.exit_code}"))
 
     # Prefer the executor's structured termination classification (rendered with
     # confidence). Fall back to snakesee's own low-confidence string heuristic only
     # when no structured category arrived (e.g. an older executor).
+    from snakesee.remote_termination import SOURCE_STATUS_REASON
     from snakesee.remote_termination import format_termination_marker
+    from snakesee.remote_termination import format_termination_source
 
     marker = format_termination_marker(job.termination_category, job.termination_confidence)
+    # Provenance only ever annotates a rendered marker: a source arriving with
+    # no usable category (no marker) has nothing to attribute and is dropped.
+    source = format_termination_source(job.termination_source) if marker is not None else None
     if job.termination_category is None and job.status_reason:
         from snakesee.remote_links import is_spot_interruption
 
         if is_spot_interruption(job.status_reason):
             marker = "possibly spot interrupted"
+            # The reader-side heuristic inspects the same field as the
+            # executor's status_reason source, so it carries the same label.
+            source = format_termination_source(SOURCE_STATUS_REASON)
     if marker is not None:
-        lines.append(f"  {marker}")
+        marker_line = Text(f"  {marker}")
+        if source is not None:
+            marker_line.append(f" ({source})", style="dim")
+        lines.append(marker_line)
 
     if job.status_reason:
-        lines.append(f"  reason: {job.status_reason}")
+        lines.append(Text(f"  reason: {job.status_reason}"))
 
     if job.cost_estimate is not None:
-        lines.append(f"  est. cost: {format_cost(job.cost_estimate)}")
+        lines.append(Text(f"  est. cost: {format_cost(job.cost_estimate)}"))
 
     console = batch_console_url(job.external_jobid, region=job.region)
     if console is not None:
-        lines.append(f"  console: {console}")
+        lines.append(Text(f"  console: {console}"))
 
     logs = cloudwatch_url(job.log_stream, region=job.region)
     if logs is not None:
-        lines.append(f"  logs:    {logs}")
+        lines.append(Text(f"  logs:    {logs}"))
 
     return lines
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.binding import BindingType
@@ -88,16 +89,18 @@ class JobLogScreen(ModalScreen[None]):
         self,
         log_path: Path | None,
         lines: list[str],
-        header_lines: list[str] | None = None,
+        header_lines: list[Text] | None = None,
     ) -> None:
         """Initialize with the log path (shown as the border title) and tail lines.
 
         Args:
             log_path: Path to the job's log file, or None if unknown.
             lines: Tail lines (most recent at end) to render in the RichLog.
-            header_lines: Optional lines rendered above the log (e.g. a remote
-                job's external id and console/CloudWatch links). For a remote job
-                with no local log file, these may be the only content.
+            header_lines: Optional styled lines rendered above the log (e.g. a
+                remote job's external id and console/CloudWatch links). Rich
+                ``Text`` rather than ``str`` so styles survive the markup-less
+                RichLog. For a remote job with no local log file, these may be
+                the only content.
         """
         super().__init__()
         self._log_path = log_path
@@ -124,9 +127,9 @@ class JobLogScreen(ModalScreen[None]):
     def on_mount(self) -> None:
         """Write the optional header and captured tail lines into the RichLog widget."""
         log = self.query_one("#job-log", RichLog)
-        for line in self._header_lines:
-            log.write(line)
+        for header_line in self._header_lines:
+            log.write(header_line)
         if self._header_lines and self._lines:
             log.write("")  # blank separator between the remote header and the log tail
-        for line in self._lines:
-            log.write(line)
+        for tail_line in self._lines:
+            log.write(tail_line)

@@ -53,6 +53,31 @@ _CATEGORY_LABELS: Final[dict[str, str]] = {
     TERM_IMAGE_PULL: "image pull failed",
 }
 
+# Friendly labels for known sources — only the values the AWS Batch executor's
+# classifier actually emits today. Anything else (including contract-reserved
+# values like "eventbridge" and "executor_heuristic") falls back to the raw
+# string, the same forward-compat pattern the category labels use.
+_SOURCE_LABELS: Final[dict[str, str]] = {
+    SOURCE_AWS_INSTANCE_STATE: "EC2 instance state",
+    SOURCE_STATUS_REASON: "status-reason text",
+}
+
+
+def format_termination_source(source: str | None) -> str | None:
+    """Render the provenance of a termination classification as a "via ..." phrase.
+
+    Args:
+        source: The classification provenance (a SOURCE_* value, or a
+            forward-compat string). None or empty yields no phrase, so a
+            missing source can't render a dangling "via ".
+
+    Returns:
+        A "via <source label>" string, or None when there is no source to attribute.
+    """
+    if not source:
+        return None
+    return f"via {_SOURCE_LABELS.get(source, source.replace('_', ' '))}"
+
 
 def format_termination_marker(category: str | None, confidence: str | None) -> str | None:
     """Render a one-line termination marker, phrased by confidence.

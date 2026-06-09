@@ -23,14 +23,14 @@ class TestMakeRemoteJobInfo:
         """A bare external id with no region shows the id but no console link."""
         job = JobInfo(rule="align", job_id="1", external_jobid="abc123", executor="aws-batch")
         lines = make_remote_job_info(job)
-        assert lines == ["aws-batch job: abc123"]
+        assert [line.plain for line in lines] == ["aws-batch job: abc123"]
 
     def test_arn_yields_console_link(self) -> None:
         """An ARN carries its region, so a console link can be built."""
         job = JobInfo(rule="align", job_id="1", external_jobid=ARN, executor="aws-batch")
         lines = make_remote_job_info(job)
-        assert lines[0] == f"aws-batch job: {ARN}"
-        assert any("console:" in line and "region=us-east-1" in line for line in lines)
+        assert lines[0].plain == f"aws-batch job: {ARN}"
+        assert any("console:" in line.plain and "region=us-east-1" in line.plain for line in lines)
 
     def test_region_and_log_stream_yield_both_links(self) -> None:
         """With region + log stream, both console and CloudWatch links appear."""
@@ -43,13 +43,13 @@ class TestMakeRemoteJobInfo:
             log_stream="JobDef/default/abc",
         )
         lines = make_remote_job_info(job)
-        assert any("console:" in line for line in lines)
-        assert any("logs:" in line and "cloudwatch" in line for line in lines)
+        assert any("console:" in line.plain for line in lines)
+        assert any("logs:" in line.plain and "cloudwatch" in line.plain for line in lines)
 
     def test_falls_back_to_remote_label_without_executor(self) -> None:
         """When the executor name is unknown, a neutral 'remote' label is used."""
         job = JobInfo(rule="align", job_id="1", external_jobid="abc123")
-        assert make_remote_job_info(job)[0] == "remote job: abc123"
+        assert make_remote_job_info(job)[0].plain == "remote job: abc123"
 
     def test_shows_queue_and_queue_wait(self) -> None:
         """Queue name and queue wait (start_time - queued_at) are surfaced."""
@@ -63,8 +63,8 @@ class TestMakeRemoteJobInfo:
             start_time=142.0,  # 42s queue wait
         )
         lines = make_remote_job_info(job)
-        assert any("queue:" in line and "graviton-spot" in line for line in lines)
-        assert any("queued for:" in line for line in lines)
+        assert any("queue:" in line.plain and "graviton-spot" in line.plain for line in lines)
+        assert any("queued for:" in line.plain for line in lines)
 
 
 class TestIncompleteJobCarriesExternalId:
@@ -90,4 +90,4 @@ class TestIncompleteJobCarriesExternalId:
         )
         assert job.external_jobid == ARN
         # And it round-trips into display lines.
-        assert make_remote_job_info(job)[0].endswith(ARN)
+        assert make_remote_job_info(job)[0].plain.endswith(ARN)

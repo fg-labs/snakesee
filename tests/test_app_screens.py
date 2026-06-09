@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from rich.text import Text
+
 from snakesee.tui.app import SnakeseeApp
 from snakesee.tui.screens import EasterEggScreen
 from snakesee.tui.screens import HelpScreen
@@ -99,7 +101,7 @@ async def test_job_log_screen_renders_remote_header(tmp_path: Path) -> None:
     """A remote job with no local log shows only its header lines, titled 'remote job'."""
     from textual.widgets import RichLog
 
-    header = ["aws-batch job: abc123", "  console: https://example"]
+    header = [Text("aws-batch job: abc123"), Text("  console: https://example")]
 
     app = SnakeseeApp(workflow_dir=tmp_path)
     async with app.run_test() as pilot:
@@ -117,7 +119,7 @@ async def test_job_log_screen_header_plus_log_has_separator(tmp_path: Path) -> N
     """Header lines and log tail are separated by a blank line when both present."""
     from textual.widgets import RichLog
 
-    header = ["aws-batch job: abc123"]
+    header = [Text("aws-batch job: abc123")]
     lines = ["log line one", "log line two"]
 
     app = SnakeseeApp(workflow_dir=tmp_path)
