@@ -23,6 +23,46 @@ from snakesee.profile import load_profile
 
 logger = logging.getLogger(__name__)
 
+# Top-level module names of the optional TUI stack. These are declared as hard
+# dependencies in pyproject.toml, but a partial install (notably a conda/bioconda
+# package whose recipe omitted them) can leave them absent. They are imported
+# lazily so the non-interactive commands keep working without them; the TUI
+# commands surface an actionable error instead of a raw ModuleNotFoundError.
+_TUI_DEPENDENCY_MODULES = {"textual", "rich_pixels", "PIL"}
+
+
+def _is_missing_tui_dependency(error: ModuleNotFoundError) -> bool:
+    """Return True if the error is a missing TUI dependency (not an internal bug).
+
+    Args:
+        error: The ModuleNotFoundError to classify.
+
+    Returns:
+        True if the missing module is part of the optional TUI stack.
+    """
+    return (error.name or "").split(".", 1)[0] in _TUI_DEPENDENCY_MODULES
+
+
+def _exit_missing_tui_dependency(error: ModuleNotFoundError) -> NoReturn:
+    """Print an actionable message for a missing TUI dependency and exit.
+
+    Args:
+        error: The ModuleNotFoundError raised while importing the TUI stack.
+    """
+    console = Console(stderr=True)
+    console.print(
+        f"[red]Error:[/red] The snakesee TUI requires additional packages that "
+        f"are not installed (missing: {error.name})."
+    )
+    console.print(
+        "These ship with snakesee but may be absent in a partial conda/pixi install. "
+        "Install the TUI stack, e.g.:"
+    )
+    console.print("    pip install textual rich-pixels pillow")
+    console.print("or reinstall snakesee from PyPI:")
+    console.print("    pip install --force-reinstall snakesee")
+    sys.exit(1)
+
 
 def _validate_workflow_dir(workflow_dir: Path) -> Path:
     """
@@ -117,8 +157,13 @@ def watch(
     # Load profile if specified or auto-discover
     profile_path = profile or find_profile(workflow_dir)
 
-    from snakesee.tui import WorkflowMonitorTUI
-    from snakesee.tui.accessibility import ACCESSIBLE_CONFIG
+    try:
+        from snakesee.tui import WorkflowMonitorTUI
+        from snakesee.tui.accessibility import ACCESSIBLE_CONFIG
+    except ModuleNotFoundError as e:
+        if not _is_missing_tui_dependency(e):
+            raise
+        _exit_missing_tui_dependency(e)
 
     accessibility_config = ACCESSIBLE_CONFIG if colorblind else None
 
@@ -361,7 +406,12 @@ def demo(
                 CI and scripting.
         clean: Wipe all demo dirs in the cache and exit without launching anything.
     """
-    from snakesee.demo import run_demo
+    try:
+        from snakesee.demo import run_demo
+    except ModuleNotFoundError as e:
+        if not _is_missing_tui_dependency(e):
+            raise
+        _exit_missing_tui_dependency(e)
 
     rc = run_demo(
         cores=cores,

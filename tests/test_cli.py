@@ -1,13 +1,17 @@
 """Tests for the CLI module."""
 
 import json
+import sys
 import time
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from snakesee.cli import _exit_missing_tui_dependency
+from snakesee.cli import _is_missing_tui_dependency
 from snakesee.cli import _validate_workflow_dir
+from snakesee.cli import demo
 from snakesee.cli import profile_export
 from snakesee.cli import profile_show
 from snakesee.cli import status
@@ -87,6 +91,94 @@ class TestWatch:
                 accessibility_config=ACCESSIBLE_CONFIG,
             )
             mock_instance.run.assert_called_once()
+
+
+def _block_textual_import(monkeypatch: pytest.MonkeyPatch, *prefixes: str) -> None:
+    """Make ``import textual`` fail as it would in a partial install.
+
+    Drops every cached ``textual`` module and marks the package as known-absent
+    (``sys.modules['textual'] = None``), then evicts the given snakesee module
+    prefixes so their lazy ``from textual ... import`` statements re-run and fail.
+    monkeypatch restores all of sys.modules after the test.
+
+    Args:
+        monkeypatch: The pytest monkeypatch fixture.
+        prefixes: snakesee module prefixes whose cached entries must be evicted.
+    """
+    for name in [m for m in sys.modules if m == "textual" or m.startswith("textual.")]:
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.setitem(sys.modules, "textual", None)
+    for prefix in prefixes:
+        for name in [m for m in sys.modules if m.startswith(prefix)]:
+            monkeypatch.delitem(sys.modules, name, raising=False)
+
+
+class TestMissingTuiDependency:
+    """Tests for graceful handling of a missing TUI dependency stack."""
+
+    def test_is_missing_tui_dependency_true_for_tui_modules(self) -> None:
+        """TUI stack modules (incl. submodules) are classified as TUI deps."""
+        for name in ("textual", "textual.app", "rich_pixels", "PIL", "PIL.Image"):
+            error = ModuleNotFoundError(f"No module named {name!r}", name=name)
+            assert _is_missing_tui_dependency(error), name
+
+    def test_is_missing_tui_dependency_false_for_other_modules(self) -> None:
+        """A non-TUI missing module is not classified as a TUI dep."""
+        error = ModuleNotFoundError("No module named 'snakesee.broken'", name="snakesee.broken")
+        assert not _is_missing_tui_dependency(error)
+
+    def test_is_missing_tui_dependency_handles_none_name(self) -> None:
+        """An error with no module name is not treated as a TUI dep."""
+        assert not _is_missing_tui_dependency(ModuleNotFoundError("nameless"))
+
+    def test_exit_emits_actionable_message_to_stderr(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The exit helper writes an install hint to stderr and exits non-zero."""
+        error = ModuleNotFoundError("No module named 'textual'", name="textual")
+        with pytest.raises(SystemExit) as exc_info:
+            _exit_missing_tui_dependency(error)
+        # mypy types the helper as NoReturn, so it flags the post-`with` body as
+        # unreachable; at runtime pytest.raises catches the SystemExit and we do reach here.
+        assert exc_info.value.code == 1  # type: ignore[unreachable]
+
+        captured = capsys.readouterr()
+        assert "textual" in captured.err
+        assert "pip install" in captured.err
+        # No traceback noise leaks to stdout.
+        assert captured.out == ""
+
+    def test_watch_reports_missing_textual(
+        self,
+        snakemake_dir: Path,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """watch exits cleanly with an actionable message when textual is absent."""
+        _block_textual_import(monkeypatch, "snakesee.tui")
+
+        with pytest.raises(SystemExit) as exc_info:
+            watch(tmp_path)
+        assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert "textual" in captured.err
+
+    def test_demo_reports_missing_textual(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """demo exits cleanly with an actionable message when textual is absent."""
+        _block_textual_import(monkeypatch, "snakesee.tui", "snakesee.demo")
+
+        with pytest.raises(SystemExit) as exc_info:
+            demo()
+        assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert "textual" in captured.err
 
 
 class TestStatus:
