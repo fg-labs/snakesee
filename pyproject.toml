@@ -77,7 +77,7 @@ members = [
 ]
 
 [tool.uv.sources]
-snakemake-logger-plugin-snakesee = { workspace = true, editable = true }
+snakemake-logger-plugin-snakesee = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
