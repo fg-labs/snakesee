@@ -53,3 +53,42 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: fg-labs/snakesee
+
+  # Reproduce the exact Read the Docs build so a pyproject.toml that the
+  # RTD-pinned uv cannot parse fails CI instead of only failing the RTD build.
+  # The main Tests job uses a newer uv (UV_VERSION above) that tolerates more
+  # syntax, so it cannot catch incompatibilities with the older uv RTD pins.
+  # The uv version is read straight from .readthedocs.yml so this job never
+  # drifts from the real build.
+  ReadTheDocs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Extract uv version pinned by Read the Docs
+        id: rtd
+        run: |
+          set -euo pipefail
+          uv_version="$(sed -nE 's/.*uv==([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' .readthedocs.yml | head -1)"
+          if [ -z "${uv_version}" ]; then
+            echo "Could not find a pinned uv version (uv==X.Y.Z) in .readthedocs.yml" >&2
+            exit 1
+          fi
+          echo "Read the Docs pins uv==${uv_version}"
+          echo "uv_version=${uv_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Reproduce the Read the Docs install
+        run: |
+          set -euo pipefail
+          python -m venv .rtd-venv
+          .rtd-venv/bin/pip install --upgrade --no-cache-dir pip setuptools
+          .rtd-venv/bin/pip install "uv==${{ steps.rtd.outputs.uv_version }}"
+          VIRTUAL_ENV=.rtd-venv .rtd-venv/bin/uv pip install --group docs .
