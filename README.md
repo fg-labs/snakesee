@@ -12,6 +12,7 @@
 [![PyPI version][pypi-badge]][pypi-link]
 [![PyPI downloads][pypi-downloads-badge]][pypi-link]
 [![Bioconda][bioconda-badge]][bioconda-link]
+[![DOI][doi-badge]][doi-link]
 
 **A terminal UI for monitoring Snakemake workflows.**
 
@@ -429,3 +430,5 @@ This codebase was written with the assistance of AI (Claude). All code has been 
 [pypi-downloads-badge]: https://img.shields.io/pypi/dm/snakesee
 [bioconda-badge]: https://img.shields.io/conda/vn/bioconda/snakesee
 [bioconda-link]: https://anaconda.org/bioconda/snakesee
+[doi-badge]: https://zenodo.org/badge/DOI/10.5281/zenodo.21446438.svg
+[doi-link]: https://doi.org/10.5281/zenodo.21446438
