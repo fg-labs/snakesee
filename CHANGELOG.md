@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/fg-labs/snakesee/compare/0.9.0...0.9.1) (2026-07-20)
+
+
+### Documentation
+
+* add Zenodo DOI badge ([#89](https://github.com/fg-labs/snakesee/issues/89)) ([8ee3809](https://github.com/fg-labs/snakesee/commit/8ee3809d72232f2998ac8cad4402c8105e4e1bc4))
+
 ## [0.9.0](https://github.com/fg-labs/snakesee/compare/0.8.1...0.9.0) (2026-06-24)
 
 
