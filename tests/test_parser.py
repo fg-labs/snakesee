@@ -144,3 +144,52 @@ def test_nothing_to_be_done() -> None:
     p = LogParser()
     p.feed(["Building DAG of jobs...", "Nothing to be done (all requested files are present)."])
     assert p.summary().status is RunStatus.NOTHING_TO_DO
+
+
+def test_rule_infos_from_fixture() -> None:
+    rules = {r.name: r for r in parse_fixture().summary().rules}
+    assert list(rules) == ["run_ase_model_part1", "run_total_model", "collect_results"]
+    total = rules["run_total_model"]
+    assert (total.total, total.active, total.done, total.failed, total.pending) == (3, 1, 1, 1, 0)
+    collect = rules["collect_results"]
+    assert (collect.total, collect.seen, collect.pending, collect.first_seen) == (1, 0, 1, None)
+    assert parse_fixture().summary().n_pending == 6 - 2 - 1 - 2
+
+
+CHAIN_LOG = """\
+Job stats:
+job      count
+-----  -------
+fetch        2
+align        2
+merge        1
+total        5
+
+rule fetch:
+    output: raw/1.fq
+    jobid: 1
+rule fetch:
+    output: raw/2.fq
+    jobid: 2
+rule align:
+    input: raw/1.fq, ref.fa
+    output: bam/1.bam, bam/1.bai
+    jobid: 3
+rule align:
+    input: raw/2.fq, ref.fa
+    output: bam/2.bam, bam/2.bai
+    jobid: 4
+localrule merge:
+    input: bam/1.bam, bam/2.bam, raw/1.fq
+    output: merged.bam
+    jobid: 5
+"""
+
+
+def test_rule_edges_inferred_from_inputs_and_outputs() -> None:
+    p = LogParser()
+    p.feed(CHAIN_LOG.splitlines())
+    s = p.summary()
+    assert s.edges == {("fetch", "align"), ("align", "merge"), ("fetch", "merge")}
+    assert [r.name for r in s.rules] == ["fetch", "align", "merge"]
+    assert [r.first_seen for r in s.rules] == [0, 1, 2]

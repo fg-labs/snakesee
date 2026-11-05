@@ -67,6 +67,32 @@ class Job:
 
 
 @dataclass(frozen=True, slots=True)
+class RuleInfo:
+    """Per-rule job counts."""
+
+    name: str
+    total: int | None = None
+    """Planned job count from the ``Job stats`` table (None if the rule isn't listed)."""
+    active: int = 0
+    done: int = 0
+    failed: int = 0
+    first_seen: int | None = None
+    """Order in which the rule's first job appeared in the log (None: no job yet)."""
+    stats_index: int = 0
+    """Position in the ``Job stats`` table."""
+
+    @property
+    def seen(self) -> int:
+        """Jobs of this rule that have appeared in the log."""
+        return self.active + self.done + self.failed
+
+    @property
+    def pending(self) -> int:
+        """Planned jobs not yet submitted."""
+        return max(0, self.total - self.seen) if self.total is not None else 0
+
+
+@dataclass(frozen=True, slots=True)
 class RunSummary:
     """Immutable snapshot of run-level information for display."""
 
@@ -79,3 +105,11 @@ class RunSummary:
     n_failed: int = 0
     snakemake_version: str = ""
     command: str = ""
+    rules: tuple[RuleInfo, ...] = ()
+    edges: frozenset[tuple[str, str]] = frozenset()
+    """Rule-level dependencies ``(upstream, downstream)`` seen in this run."""
+
+    @property
+    def n_pending(self) -> int:
+        """Planned jobs not yet submitted."""
+        return max(0, self.steps_total - self.n_active - self.n_done - self.n_failed)

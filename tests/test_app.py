@@ -92,9 +92,9 @@ async def test_ui_stays_responsive_when_filesystem_is_slow(workflow: Path) -> No
     handled: list[float] = []
     show_tab = app.action_show_tab
 
-    def record(table_id: str) -> None:
+    def record(pane: str) -> None:
         handled.append(time.monotonic())
-        show_tab(table_id)
+        show_tab(pane)
 
     app.action_show_tab = record  # type: ignore[method-assign]
     async with app.run_test(size=(160, 40)) as pilot:
@@ -182,3 +182,16 @@ async def test_ctrl_c_does_not_quit(workflow: Path) -> None:
         await pilot.press("ctrl+c")
         await pilot.pause()
         assert app.is_running
+
+
+async def test_rules_tab(workflow: Path) -> None:
+    app = SnakeseeApp(workflow)
+    async with app.run_test(size=(160, 40)) as pilot:
+        await wait_for(pilot, lambda: rows(app, "failed") == 2)
+        await pilot.press("4")
+        assert app.query_one(TabbedContent).active == "tab-rules"
+        graph = str(app.query_one("#rules-graph").render())
+        assert "run_total_model" in graph and "1 running" in graph
+        assert "collect_results" in graph and "1 pending" in graph
+        await pilot.press("enter", "o")  # no job selected on the Rules tab: nothing opens
+        assert not isinstance(app.screen, LogScreen)

@@ -38,7 +38,8 @@ snakesee/
 └── tui/
     ├── app.py        # SnakeseeApp: polling worker, tables, header
     ├── log_screen.py # LogScreen: per-job log viewer with follow mode
-    ├── widgets.py    # JobTable / PagerLog: DataTable / Log with less-style keys
+    ├── rulegraph.py  # git-graph-style rule DAG layout (pure; edges inferred by the parser)
+    ├── widgets.py    # JobTable / PagerLog / PagerScroll: less-style keys
     └── format.py     # duration/time formatting
 ```
 

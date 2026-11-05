@@ -37,11 +37,13 @@ from snakesee.model import RunStatus
 from snakesee.model import RunSummary
 from snakesee.monitor import Update
 from snakesee.monitor import WorkflowMonitor
+from snakesee.tui import rulegraph
 from snakesee.tui.format import fmt_duration
 from snakesee.tui.format import fmt_time
 from snakesee.tui.format import truncate
 from snakesee.tui.log_screen import LogScreen
 from snakesee.tui.widgets import JobTable
+from snakesee.tui.widgets import PagerScroll
 
 WILDCARD_WIDTH = 60
 MESSAGE_WIDTH = 60
@@ -140,6 +142,7 @@ class SnakeseeApp(App[None]):
         Binding("1", "show_tab('active')", "Active"),
         Binding("2", "show_tab('failed')", "Failed"),
         Binding("3", "show_tab('done')", "Done"),
+        Binding("4", "show_tab('rules')", "Rules"),
         Binding("o", "open_log('stdout')", "stdout"),
         Binding("e", "open_log('stderr')", "stderr"),
         Binding("b", "open_log('bpeek')", "bpeek"),
@@ -167,6 +170,7 @@ class SnakeseeApp(App[None]):
         self.message = ""
         self._wake = threading.Event()
         self._stopping = False
+        self._rules_rendered: tuple[object, object] | None = None
 
     # ------------------------------------------------------------------ layout
     def compose(self) -> ComposeResult:
@@ -176,6 +180,9 @@ class SnakeseeApp(App[None]):
             for status, table_id in TABLE_IDS.items():
                 with TabPane(TAB_TITLES[status], id=f"tab-{table_id}"):
                     yield JobTable(id=table_id, cursor_type="row", zebra_stripes=True)
+            with TabPane("Rules", id="tab-rules"):
+                with PagerScroll(id="rules"):
+                    yield Static(id="rules-graph")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -225,6 +232,7 @@ class SnakeseeApp(App[None]):
             self.log_mtime = update.log_mtime
         if update.summary is not None:
             self.summary = update.summary
+            self._render_rules()
         if update.jobs:
             self._apply_jobs(update.jobs)
         elif update.summary is not None or update.switched:
@@ -317,6 +325,15 @@ class SnakeseeApp(App[None]):
                 label += f" newest {shown}"
             tabs.get_tab(f"tab-{table_id}").label = label
 
+    def _render_rules(self) -> None:
+        s = self.summary
+        key = (s.rules, s.edges)
+        if key == self._rules_rendered:
+            return
+        self._rules_rendered = key
+        self.query_one("#rules-graph", Static).update(rulegraph.render(s.rules, s.edges))
+        self.query_one(TabbedContent).get_tab("tab-rules").label = f"Rules ({len(s.rules)})"
+
     def _tick(self) -> None:
         """Once a second: advance 'elapsed' for active jobs and the header clock."""
         now = time.time()
@@ -344,6 +361,7 @@ class SnakeseeApp(App[None]):
         text.append(f"   active {s.n_active}", style="green")
         text.append(f"  failed {s.n_failed}", style="red" if s.n_failed else "")
         text.append(f"  done {s.n_done}")
+        text.append(f"  pending {s.n_pending}", style="dim")
         if self.log_mtime is not None:
             age = now - self.log_mtime
             stale = s.status in (RunStatus.RUNNING, RunStatus.DRAINING) and age > 600
@@ -371,7 +389,12 @@ class SnakeseeApp(App[None]):
         """Disable (and hide) main-screen keys while the log viewer is open."""
         if action in self.MAIN_SCREEN_ACTIONS and isinstance(self.screen, LogScreen):
             return False
+        if action == "open_log" and self._active_pane() == "rules":
+            return False
         return True
+
+    def _active_pane(self) -> str:
+        return self.query_one(TabbedContent).active.removeprefix("tab-")
 
     def action_suspend_process(self) -> None:
         """Suspend like a terminal's ctrl+z: stop the whole foreground process group.
@@ -387,9 +410,9 @@ class SnakeseeApp(App[None]):
         with self.suspend():
             os.killpg(os.getpgrp(), signal.SIGTSTP)
 
-    def action_show_tab(self, table_id: str) -> None:
-        self.query_one(TabbedContent).active = f"tab-{table_id}"
-        self.query_one(f"#{table_id}", DataTable).focus()
+    def action_show_tab(self, pane: str) -> None:
+        self.query_one(TabbedContent).active = f"tab-{pane}"
+        self.query_one(f"#{pane}").focus()
 
     def action_refresh_now(self) -> None:
         self._wake.set()
@@ -403,14 +426,16 @@ class SnakeseeApp(App[None]):
         self.action_open_log()
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        pane_id = event.pane.id or ""
-        table_id = pane_id.removeprefix("tab-")
-        if table_id in TABLE_IDS.values():
-            self.query_one(f"#{table_id}", DataTable).focus()
+        pane = (event.pane.id or "").removeprefix("tab-")
+        if pane:
+            self.query_one(f"#{pane}").focus()
+        self.refresh_bindings()
 
     def _selected_job(self) -> Job | None:
-        pane = self.query_one(TabbedContent).active
-        table = self.query_one(f"#{pane.removeprefix('tab-')}", DataTable)
+        pane = self._active_pane()
+        if pane not in TABLE_IDS.values():
+            return None
+        table = self.query_one(f"#{pane}", DataTable)
         key = _cursor_key(table)
         return self.jobs.get(int(key)) if key is not None else None
 

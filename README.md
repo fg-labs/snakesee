@@ -30,6 +30,7 @@ snakesee -n 5                 # poll every 5 seconds (default 2)
 | Main screen | |
 |---|---|
 | `1` / `2` / `3` | Active / Failed / Done jobs |
+| `4` | Rules: per-rule progress drawn as a dependency graph |
 | `j` / `k`, arrows | Move down / up |
 | `ctrl+d` / `ctrl+u` | Half page down / up |
 | `ctrl+f` / `ctrl+b`, PgDn / PgUp | Page down / up |
@@ -69,6 +70,19 @@ Only the main Snakemake log in `.snakemake/log/`:
   The stderr log is the same path with `.err` in place of `.out`.
 - `Finished job N.` / `Finished jobid: N`, `Error in rule …:` blocks, `N of M steps`, `Job stats`,
   and the end-of-run messages.
+
+### Pending jobs and the Rules view
+
+Snakemake only names a job in the log when it submits it, so individual pending jobs can't be
+listed. Per-rule pending counts come from the `Job stats` table: planned jobs minus those seen so
+far. They appear in the header and in the Rules tab.
+
+The Rules tab draws rules as a `git log --graph`-style DAG, coloured by state: red if any job
+failed, yellow if any are running, green when all are done, dim if nothing has started.
+Dependencies are inferred from the log: rule A → rule B when a B job's input is an output of an A
+job in this run. Edges are therefore only known once a rule's first job has been submitted. Rules
+with no jobs yet are listed separately below the graph. Dependencies on outputs from earlier runs
+aren't shown. snakesee never runs Snakemake to build the DAG.
 
 "Active" means submitted but not yet finished. Snakemake's log does not say whether an LSF job is
 pending or running.

@@ -15,6 +15,7 @@ from collections.abc import Iterable
 
 from snakesee.model import Job
 from snakesee.model import JobStatus
+from snakesee.model import RuleInfo
 from snakesee.model import RunStatus
 from snakesee.model import RunSummary
 
@@ -87,6 +88,12 @@ class LogParser:
         self._version = ""
         self._command = ""
         self._counts = {s: 0 for s in JobStatus}
+        self._rule_status: dict[str, dict[JobStatus, int]] = {}
+        self._rule_first_seen: dict[str, int] = {}
+        # Rule DAG, inferred from jobs whose inputs are outputs of earlier jobs in this run.
+        self._output_rule: dict[str, str] = {}
+        self._edges: set[tuple[str, str]] = set()
+        self._edges_snapshot: frozenset[tuple[str, str]] = frozenset()
         self._changed: set[int] = set()
         self._summary_changed = True
 
@@ -133,7 +140,29 @@ class LogParser:
             n_failed=self._counts[JobStatus.FAILED],
             snakemake_version=self._version,
             command=self._command,
+            rules=self._rule_infos(),
+            edges=self._edges_snapshot,
         )
+
+    def _rule_infos(self) -> tuple[RuleInfo, ...]:
+        stats = [r for r in self.rule_counts if r != "total"]
+        names = stats + [r for r in self._rule_status if r not in self.rule_counts]
+        stats_index = {r: i for i, r in enumerate(stats)}
+        infos = []
+        for name in names:
+            c = self._rule_status.get(name, {})
+            infos.append(
+                RuleInfo(
+                    name=name,
+                    total=self.rule_counts.get(name),
+                    active=c.get(JobStatus.ACTIVE, 0),
+                    done=c.get(JobStatus.DONE, 0),
+                    failed=c.get(JobStatus.FAILED, 0),
+                    first_seen=self._rule_first_seen.get(name),
+                    stats_index=stats_index.get(name, len(stats)),
+                )
+            )
+        return tuple(infos)
 
     # ------------------------------------------------------------------ internals
     def _feed_line(self, line: str) -> None:  # noqa: C901 - flat dispatch is clearest here
@@ -248,6 +277,8 @@ class LogParser:
 
     def _block_field(self, key: str, value: str) -> None:
         self._block_fields[key] = value
+        if self._block_kind == "rule" and key in ("input", "output"):
+            self._dependency_field(key, value)
         if key == "jobid" and self._block_job is None:
             try:
                 jobid = int(value)
@@ -260,6 +291,28 @@ class LogParser:
         elif self._block_job is not None:
             self._apply_field(self._block_job, key, value)
 
+    def _dependency_field(self, key: str, value: str) -> None:
+        rule = self._block_rule
+        if key == "output":
+            for path in _split_list(value):
+                self._output_rule[path] = rule
+            return
+        before = len(self._edges)
+        for path in _split_list(value):
+            producer = self._output_rule.get(path)
+            if producer is not None and producer != rule:
+                self._edges.add((producer, rule))
+        if len(self._edges) != before:
+            self._edges_snapshot = frozenset(self._edges)
+            self._summary_changed = True
+
+    def _count(self, rule: str, status: JobStatus, delta: int) -> None:
+        self._counts[status] += delta
+        per_rule = self._rule_status.setdefault(rule, {})
+        per_rule[status] = per_rule.get(status, 0) + delta
+        self._rule_first_seen.setdefault(rule, len(self._rule_first_seen))
+        self._summary_changed = True
+
     def _open_job(self, jobid: int) -> Job:
         """Create/update the job a block refers to."""
         job = self.jobs.get(jobid)
@@ -267,8 +320,7 @@ class LogParser:
             if job is None:
                 job = Job(jobid=jobid, rule=self._block_rule, submit_time=self._last_time)
                 self.jobs[jobid] = job
-                self._counts[JobStatus.ACTIVE] += 1
-                self._summary_changed = True
+                self._count(job.rule, JobStatus.ACTIVE, 1)
                 if self._status == RunStatus.STARTING:
                     self._status = RunStatus.RUNNING
             else:
@@ -282,7 +334,7 @@ class LogParser:
             if job is None:
                 job = Job(jobid=jobid, rule=self._block_rule)
                 self.jobs[jobid] = job
-                self._counts[JobStatus.ACTIVE] += 1
+                self._count(job.rule, JobStatus.ACTIVE, 1)
             job.end_time = self._last_time
             self._saw_error = True
             self._set_status(job, JobStatus.FAILED)
@@ -343,7 +395,6 @@ class LogParser:
     def _set_status(self, job: Job, status: JobStatus) -> None:
         if job.status is status:
             return
-        self._counts[job.status] -= 1
-        self._counts[status] += 1
+        self._count(job.rule, job.status, -1)
+        self._count(job.rule, status, 1)
         job.status = status
-        self._summary_changed = True

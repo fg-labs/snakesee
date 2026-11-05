@@ -7,6 +7,8 @@ from typing import ClassVar
 
 from textual.binding import Binding
 from textual.binding import BindingType
+from textual.containers import VerticalScroll
+from textual.widget import Widget
 from textual.widgets import DataTable
 from textual.widgets import Log
 
@@ -43,29 +45,52 @@ class JobTable(DataTable[Any]):
         self.move_cursor(row=max(0, self.row_count - 1), animate=False)
 
 
+LESS_SCROLL_BINDINGS: list[BindingType] = [
+    Binding("j", "scroll_lines(1)", show=False),
+    Binding("k", "scroll_lines(-1)", show=False),
+    Binding("ctrl+d", "scroll_pages(0.5)", show=False),
+    Binding("ctrl+u", "scroll_pages(-0.5)", show=False),
+    Binding("ctrl+f,space", "scroll_pages(1.0)", show=False),
+    Binding("ctrl+b", "scroll_pages(-1.0)", show=False),
+    Binding("g", "top", show=False),
+    Binding("G", "bottom", show=False),
+]
+
+
+def _scroll_lines(self: Widget, lines: int) -> None:
+    self.scroll_relative(y=lines, animate=False)
+
+
+def _scroll_pages(self: Widget, pages: float) -> None:
+    height = max(1, self.scrollable_content_region.height)
+    self.scroll_relative(y=int(height * pages) or (1 if pages > 0 else -1), animate=False)
+
+
+def _top(self: Widget) -> None:
+    self.scroll_home(animate=False)
+
+
+def _bottom(self: Widget) -> None:
+    self.scroll_end(animate=False)
+
+
+# Shared as plain functions rather than a Widget mixin: a mixin in the bases would
+# break Textual's type selectors (e.g. ``query_one(Log)``).
 class PagerLog(Log):
     """Log viewer with less-style scrolling. Mouse-drag selects; ctrl+c copies."""
 
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("j", "scroll_lines(1)", show=False),
-        Binding("k", "scroll_lines(-1)", show=False),
-        Binding("ctrl+d", "scroll_pages(0.5)", show=False),
-        Binding("ctrl+u", "scroll_pages(-0.5)", show=False),
-        Binding("ctrl+f,space", "scroll_pages(1.0)", show=False),
-        Binding("ctrl+b", "scroll_pages(-1.0)", show=False),
-        Binding("g", "top", show=False),
-        Binding("G", "bottom", show=False),
-    ]
+    BINDINGS: ClassVar[list[BindingType]] = LESS_SCROLL_BINDINGS
+    action_scroll_lines = _scroll_lines
+    action_scroll_pages = _scroll_pages
+    action_top = _top
+    action_bottom = _bottom
 
-    def action_scroll_lines(self, lines: int) -> None:
-        self.scroll_relative(y=lines, animate=False)
 
-    def action_scroll_pages(self, pages: float) -> None:
-        height = max(1, self.scrollable_content_region.height)
-        self.scroll_relative(y=int(height * pages) or (1 if pages > 0 else -1), animate=False)
+class PagerScroll(VerticalScroll):
+    """Scrollable container with less-style keys."""
 
-    def action_top(self) -> None:
-        self.scroll_home(animate=False)
-
-    def action_bottom(self) -> None:
-        self.scroll_end(animate=False)
+    BINDINGS: ClassVar[list[BindingType]] = LESS_SCROLL_BINDINGS
+    action_scroll_lines = _scroll_lines
+    action_scroll_pages = _scroll_pages
+    action_top = _top
+    action_bottom = _bottom
