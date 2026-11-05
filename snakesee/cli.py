@@ -54,7 +54,10 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     workflow_dir, log_file = resolve_target(args.path)
     if log_file is None and not (workflow_dir / ".snakemake").is_dir():
-        print(f"snakesee: no .snakemake directory in {workflow_dir}", file=sys.stderr)
+        print(
+            f"snakesee: no .snakemake directory found at {workflow_dir / '.snakemake'}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     from snakesee.tui.app import SnakeseeApp  # deferred: keeps --help fast

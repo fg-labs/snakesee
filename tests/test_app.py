@@ -103,3 +103,82 @@ async def test_ui_stays_responsive_when_filesystem_is_slow(workflow: Path) -> No
         await pilot.press("3")
         assert app.query_one(TabbedContent).active == "tab-done"
         assert handled and handled[0] - start < 0.1
+
+
+async def test_less_keys_in_job_table(tmp_path: Path) -> None:
+    log_dir = tmp_path / ".snakemake" / "log"
+    log_dir.mkdir(parents=True)
+    blocks = "".join(f"rule r:\n    jobid: {i}\n" for i in range(200))
+    (log_dir / "2026-01-01T000000.000000.snakemake.log").write_text(blocks + "\n")
+    app = SnakeseeApp(tmp_path)
+    async with app.run_test(size=(120, 30)) as pilot:
+        await wait_for(pilot, lambda: rows(app, "active") == 200)
+        table = app.query_one("#active", DataTable)
+        await pilot.press("j", "j")
+        assert table.cursor_row == 2
+        await pilot.press("k")
+        assert table.cursor_row == 1
+        await pilot.press("ctrl+d")
+        half = table.cursor_row - 1
+        assert half >= 5
+        await pilot.press("ctrl+u")
+        assert table.cursor_row == 1
+        await pilot.press("G")
+        assert table.cursor_row == 199
+        await pilot.press("g")
+        assert table.cursor_row == 0
+
+
+async def open_log_with(pilot: Pilot[None], app: SnakeseeApp, lines: list[str]) -> Log:
+    await wait_for(pilot, lambda: rows(app, "failed") == 2)
+    await pilot.press("2")
+    job = app._selected_job()
+    assert job is not None and job.cluster_log is not None
+    out = Path(job.cluster_log)
+    out.parent.mkdir(parents=True)
+    out.write_text("\n".join(lines) + "\n")
+    await pilot.press("o")
+    log = app.screen.query_one(Log)
+    await wait_for(pilot, lambda: lines[-1] in log.lines)
+    return log
+
+
+async def test_less_keys_in_log_view(workflow: Path) -> None:
+    app = SnakeseeApp(workflow)
+    async with app.run_test(size=(120, 30)) as pilot:
+        log = await open_log_with(pilot, app, [f"line {i}" for i in range(500)])
+        await pilot.press("g")
+        assert log.scroll_y == 0
+        await pilot.press("j", "j", "j")
+        assert log.scroll_y == 3
+        await pilot.press("k")
+        assert log.scroll_y == 2
+        await pilot.press("ctrl+d")
+        assert log.scroll_y > 6
+        await pilot.press("ctrl+u")
+        assert log.scroll_y == 2
+        await pilot.press("G")
+        assert log.scroll_y == log.max_scroll_y
+
+
+async def test_mouse_select_and_ctrl_c_copies(workflow: Path) -> None:
+    app = SnakeseeApp(workflow)
+    copied: list[str] = []
+    app.copy_to_clipboard = copied.append  # type: ignore[method-assign,assignment]
+    async with app.run_test(size=(120, 30)) as pilot:
+        log = await open_log_with(pilot, app, ["MemoryError: oops", "second line"])
+        await pilot.press("g")
+        await pilot.mouse_down(log, offset=(0, 0))
+        await pilot.hover(log, offset=(11, 0))
+        await pilot.mouse_up(log, offset=(11, 0))
+        await pilot.press("ctrl+c")
+        assert copied and copied[0].startswith("MemoryError")
+        assert app.is_running  # ctrl+c must not quit
+
+
+async def test_ctrl_c_does_not_quit(workflow: Path) -> None:
+    app = SnakeseeApp(workflow)
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        assert app.is_running

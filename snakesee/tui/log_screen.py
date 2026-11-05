@@ -22,6 +22,7 @@ from snakesee.joblogs import fetch
 from snakesee.joblogs import sources_for
 from snakesee.model import Job
 from snakesee.model import JobStatus
+from snakesee.tui.widgets import PagerLog
 
 FILE_FOLLOW_INTERVAL = 2.0
 BPEEK_FOLLOW_INTERVAL = 5.0  # bpeek queries the LSF master; don't hammer it
@@ -52,8 +53,6 @@ class LogScreen(Screen[None]):
         Binding("l", "show('rule log')", "rule log"),
         Binding("r", "reload", "Reload"),
         Binding("f", "toggle_follow", "Follow"),
-        Binding("g", "top", "Top", show=False),
-        Binding("G", "bottom", "Bottom", show=False),
     ]
 
     def __init__(self, job: Job, workflow_dir: Path, kind: SourceKind | None = None) -> None:
@@ -74,7 +73,7 @@ class LogScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Static(id="log-header")
-        yield Log(id="log-body", highlight=False)
+        yield PagerLog(id="log-body", highlight=False)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -163,12 +162,6 @@ class LogScreen(Screen[None]):
 
     def action_close(self) -> None:
         self.app.pop_screen()
-
-    def action_top(self) -> None:
-        self.query_one(Log).scroll_home(animate=False)
-
-    def action_bottom(self) -> None:
-        self.query_one(Log).scroll_end(animate=False)
 
     def update_job(self, job: Job) -> None:
         """Called by the app when this job's state changes (e.g. it finished)."""

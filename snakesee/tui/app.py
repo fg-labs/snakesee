@@ -8,6 +8,8 @@ matter how slow the cluster filesystem is.
 
 from __future__ import annotations
 
+import os
+import signal
 import threading
 import time
 from pathlib import Path
@@ -39,6 +41,7 @@ from snakesee.tui.format import fmt_duration
 from snakesee.tui.format import fmt_time
 from snakesee.tui.format import truncate
 from snakesee.tui.log_screen import LogScreen
+from snakesee.tui.widgets import JobTable
 
 WILDCARD_WIDTH = 60
 MESSAGE_WIDTH = 60
@@ -132,7 +135,6 @@ class SnakeseeApp(App[None]):
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("q", "quit", "Quit"),
-        Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
         # Raw terminal mode turns ctrl+z into an ordinary key; hand it back to the shell.
         Binding("ctrl+z", "suspend_process", "Background", priority=True),
         Binding("1", "show_tab('active')", "Active"),
@@ -173,7 +175,7 @@ class SnakeseeApp(App[None]):
         with TabbedContent(id="tabs"):
             for status, table_id in TABLE_IDS.items():
                 with TabPane(TAB_TITLES[status], id=f"tab-{table_id}"):
-                    yield DataTable(id=table_id, cursor_type="row", zebra_stripes=True)
+                    yield JobTable(id=table_id, cursor_type="row", zebra_stripes=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -370,6 +372,20 @@ class SnakeseeApp(App[None]):
         if action in self.MAIN_SCREEN_ACTIONS and isinstance(self.screen, LogScreen):
             return False
         return True
+
+    def action_suspend_process(self) -> None:
+        """Suspend like a terminal's ctrl+z: stop the whole foreground process group.
+
+        Textual's built-in version only stops this process, so under ``uv run``/``uvx``
+        the parent ``uv`` keeps the terminal and the shell prompt doesn't come back.
+        The terminal is restored *before* signalling: once ``uv`` stops, the shell takes
+        the terminal, and touching it from the background would stop us mid-cleanup.
+        ``App.suspend`` restores the terminal, then redraws when we are continued.
+        """
+        if self._driver is None or not self._driver.can_suspend:
+            return
+        with self.suspend():
+            os.killpg(os.getpgrp(), signal.SIGTSTP)
 
     def action_show_tab(self, table_id: str) -> None:
         self.query_one(TabbedContent).active = f"tab-{table_id}"

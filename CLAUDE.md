@@ -17,10 +17,13 @@ codebase was abandoned because it blocked the UI thread with full rescans on eve
 2. **Polling cost must scale with new data, not history.** The log is tailed by byte offset
    (`tail.FileTailer`) and parsed incrementally (`parser.LogParser`). Never re-read the whole log,
    scan `.snakemake/metadata`, or stat workflow input files on a poll.
-3. **Ctrl-Z must keep working.** It is bound to Textual's `suspend_process` with `priority=True`.
-   Don't add bindings or modal flows that swallow it.
+3. **Ctrl-Z must keep working with a single press**, including under `uv run`/`uvx`. The app
+   overrides `action_suspend_process`: it restores the terminal first, then sends SIGTSTP to the
+   whole process group. `tests/test_suspend.py` checks this in a real pty. Don't add bindings
+   that swallow ctrl+z.
 4. **Keep DataTables small and diff-updated.** Update changed cells only. Finished and failed tables
    are capped (`ROW_LIMIT`). `remove_row` is O(rows), so rebuild instead of removing many rows.
+5. **No backwards compatibility constraints.** Change CLI, keys or behaviour freely.
 
 ## Layout
 
@@ -35,6 +38,7 @@ snakesee/
 └── tui/
     ├── app.py        # SnakeseeApp: polling worker, tables, header
     ├── log_screen.py # LogScreen: per-job log viewer with follow mode
+    ├── widgets.py    # JobTable / PagerLog: DataTable / Log with less-style keys
     └── format.py     # duration/time formatting
 ```
 

@@ -30,21 +30,34 @@ snakesee -n 5                 # poll every 5 seconds (default 2)
 | Main screen | |
 |---|---|
 | `1` / `2` / `3` | Active / Failed / Done jobs |
+| `j` / `k`, arrows | Move down / up |
+| `ctrl+d` / `ctrl+u` | Half page down / up |
+| `ctrl+f` / `ctrl+b`, PgDn / PgUp | Page down / up |
+| `g` / `G` | First / last job |
 | `enter` | Open logs for the selected job (bpeek for active jobs, stdout otherwise) |
 | `o` / `e` / `b` | Open the selected job's stdout / stderr / bpeek directly |
 | `r` | Poll now |
 | `ctrl+z` | Suspend to the shell (`fg` to resume) |
-| `q` | Quit |
+| `q` / `ctrl+q` | Quit |
 
 | Log viewer | |
 |---|---|
 | `o` / `e` / `b` / `l` | Switch to stdout / stderr / bpeek / rule log (`l` cycles through multiple) |
 | `f` | Toggle follow (auto-reload: files every 2s, bpeek every 5s). On by default for active jobs |
 | `r` | Reload now |
+| `j` / `k`, arrows | Scroll one line |
+| `ctrl+d` / `ctrl+u` | Half page down / up |
+| `ctrl+f` / `space` / `ctrl+b` | Page down / page down / page up |
 | `g` / `G` | Top / bottom |
+| mouse drag, then `ctrl+c` | Copy the selected text |
 | `esc` / `q` | Back |
 
 The Done and Failed tables show the newest 1000 jobs. The tab titles show the full counts.
+
+Copying uses the OSC 52 terminal escape, which most modern terminals support (iTerm2, kitty,
+WezTerm, Windows Terminal, recent xterm), including over SSH. Inside tmux, set
+`set -g set-clipboard on`. If your terminal doesn't support it, hold `shift` (or `option` on macOS)
+while dragging to use the terminal's own selection.
 
 ## What it reads
 
