@@ -46,6 +46,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=2.0,
         help="seconds between polls of the Snakemake log (default: 2)",
     )
+    p.add_argument(
+        "--bjobs-interval",
+        type=float,
+        default=60.0,
+        help="seconds between bjobs queries for running jobs' memory use; 0 disables (default: 60)",
+    )
     p.add_argument("--version", action="version", version=f"snakesee {__version__}")
     return p.parse_args(argv)
 
@@ -62,7 +68,12 @@ def main(argv: list[str] | None = None) -> None:
 
     from snakesee.tui.app import SnakeseeApp  # deferred: keeps --help fast
 
-    SnakeseeApp(workflow_dir, log_file=log_file, interval=max(0.2, args.interval)).run()
+    SnakeseeApp(
+        workflow_dir,
+        log_file=log_file,
+        interval=max(0.2, args.interval),
+        bjobs_interval=max(0.0, args.bjobs_interval),
+    ).run()
 
 
 if __name__ == "__main__":

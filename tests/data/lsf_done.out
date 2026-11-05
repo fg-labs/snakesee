@@ -1,0 +1,37 @@
+Sender: LSF System <lsfadmin@node7>
+Subject: Job 101867798: <snakejob.run_total_model.3233.sh> in cluster <cluster1> Done
+
+Job <snakejob.run_total_model.3233.sh> was submitted from host <node1> by user <user> in cluster <cluster1> at Thu Nov  5 12:16:01 2026
+Job was executed on host(s) <4*node7>, in queue <rhel9>, as user <user> in cluster <cluster1> at Thu Nov  5 12:16:40 2026
+</home/user> was used as the home directory.
+</data/proj> was used as the working directory.
+Started at Thu Nov  5 12:16:40 2026
+Terminated at Thu Nov  5 12:24:58 2026
+Results reported at Thu Nov  5 12:24:58 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+/data/proj/.snakemake/tmp.abc/snakejob.run_total_model.3233.sh
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   702.93 sec.
+    Max Memory :                                 10912 MB
+    Average Memory :                             9619.73 MB
+    Total Requested Memory :                     24000.00 MB
+    Delta Memory :                               13088.00 MB
+    Max Swap :                                   -
+    Max Processes :                              5
+    Max Threads :                                53
+    Run time :                                   498 sec.
+    Turnaround time :                            559 sec.
+
+The output (if any) follows:
+
+Building DAG of jobs...
+Max Memory : this line is job output and must be ignored

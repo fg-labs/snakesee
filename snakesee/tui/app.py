@@ -31,14 +31,20 @@ from textual.widgets import TabPane
 from textual.worker import get_current_worker
 
 from snakesee.joblogs import SourceKind
+from snakesee.joblogs import resolve
 from snakesee.model import Job
 from snakesee.model import JobStatus
 from snakesee.model import RunStatus
 from snakesee.model import RunSummary
 from snakesee.monitor import Update
 from snakesee.monitor import WorkflowMonitor
+from snakesee.resources import JobResources
+from snakesee.resources import bjobs_available
+from snakesee.resources import query_bjobs
+from snakesee.resources import read_lsf_report
 from snakesee.tui import rulegraph
 from snakesee.tui.format import fmt_duration
+from snakesee.tui.format import fmt_mem
 from snakesee.tui.format import fmt_time
 from snakesee.tui.format import truncate
 from snakesee.tui.log_screen import LogScreen
@@ -48,8 +54,13 @@ from snakesee.tui.widgets import PagerScroll
 WILDCARD_WIDTH = 60
 MESSAGE_WIDTH = 60
 ROW_LIMIT = 1000
-REBUILD_THRESHOLD = 50
 """Max rows shown in the Done and Failed tables (newest first)."""
+REBUILD_THRESHOLD = 50
+RESOURCE_TICK = 5.0
+"""Seconds between resource-worker passes (report reads; bjobs has its own interval)."""
+REPORT_READS_PER_TICK = 200
+REPORT_RETRY = 30.0
+REPORT_MAX_ATTEMPTS = 10
 
 # (column key, label) per table
 COLUMNS: dict[JobStatus, list[tuple[str, str]]] = {
@@ -58,8 +69,11 @@ COLUMNS: dict[JobStatus, list[tuple[str, str]]] = {
         ("rule", "Rule"),
         ("wildcards", "Wildcards"),
         ("external", "Cluster ID"),
+        ("state", "LSF"),
         ("submitted", "Submitted"),
         ("elapsed", "Since submit"),
+        ("mem", "Max mem"),
+        ("pct", "% req"),
     ],
     JobStatus.FAILED: [
         ("jobid", "Job"),
@@ -67,6 +81,8 @@ COLUMNS: dict[JobStatus, list[tuple[str, str]]] = {
         ("wildcards", "Wildcards"),
         ("external", "Cluster ID"),
         ("ended", "Failed at"),
+        ("mem", "Max mem"),
+        ("pct", "% req"),
         ("message", "Message"),
     ],
     JobStatus.DONE: [
@@ -74,9 +90,15 @@ COLUMNS: dict[JobStatus, list[tuple[str, str]]] = {
         ("rule", "Rule"),
         ("wildcards", "Wildcards"),
         ("ended", "Finished"),
+        ("runtime", "Run time"),
         ("duration", "Submit→done"),
+        ("mem", "Max mem"),
+        ("pct", "% req"),
     ],
 }
+# Columns filled in later (by the resource worker) get a fixed width: DataTable sizes
+# columns from their initial content, and later updates don't widen them.
+FIXED_WIDTHS = {"state": 5, "mem": 7, "pct": 5, "runtime": 8}
 TABLE_IDS = {
     JobStatus.ACTIVE: "active",
     JobStatus.FAILED: "failed",
@@ -101,21 +123,36 @@ def _end_key(job: Job) -> float:
     return job.end_time or 0.0
 
 
-def job_cells(job: Job, now: float) -> dict[str, Any]:
+def pct_cell(res: JobResources | None) -> Text:
+    """Max memory as % of the request, highlighted when close to the limit."""
+    frac = res.mem_fraction if res is not None else None
+    if frac is None:
+        return Text("-")
+    style = "bold red" if frac >= 0.9 else "yellow" if frac >= 0.75 else ""
+    return Text(f"{100 * frac:.0f}%", style=style)
+
+
+def job_cells(job: Job, res: JobResources | None, now: float) -> dict[str, Any]:
     """Cell values for a job's row in the table matching its status."""
     cells: dict[str, Any] = {
         "jobid": job.jobid,
         "rule": job.rule,
         "wildcards": truncate(job.wildcards, WILDCARD_WIDTH),
         "external": job.external_id or "-",
+        "mem": fmt_mem(res.max_mem_mb if res else None),
+        "pct": pct_cell(res),
     }
     if job.status is JobStatus.ACTIVE:
+        stat = res.stat if res is not None and res.stat else "-"
+        cells["state"] = Text(stat, style="green" if stat == "RUN" else "dim")
         cells["submitted"] = fmt_time(job.submit_time, now)
         cells["elapsed"] = fmt_duration(now - job.submit_time if job.submit_time else None)
     elif job.status is JobStatus.FAILED:
         cells["ended"] = fmt_time(job.end_time, now)
-        cells["message"] = truncate(job.error_message, MESSAGE_WIDTH)
+        message = res.lsf_note if res is not None and res.lsf_note else job.error_message
+        cells["message"] = truncate(message, MESSAGE_WIDTH)
     else:
+        cells["runtime"] = fmt_duration(res.run_time_s if res else None)
         cells["ended"] = fmt_time(job.end_time, now)
         dur = job.end_time - job.submit_time if job.end_time and job.submit_time else None
         cells["duration"] = fmt_duration(dur)
@@ -154,6 +191,7 @@ class SnakeseeApp(App[None]):
         workflow_dir: Path,
         log_file: Path | None = None,
         interval: float = 2.0,
+        bjobs_interval: float = 60.0,
     ) -> None:
         super().__init__()
         # Instant feedback beats eye candy: no sliding tab underlines or smooth scrolling.
@@ -168,7 +206,11 @@ class SnakeseeApp(App[None]):
         self.log_mtime: float | None = None
         self.last_poll: float | None = None
         self.message = ""
+        self.bjobs_interval = bjobs_interval
+        self.resources: dict[int, JobResources] = {}
         self._wake = threading.Event()
+        self._resource_wake = threading.Event()
+        self._force_bjobs = False
         self._stopping = False
         self._rules_rendered: tuple[object, object] | None = None
 
@@ -189,15 +231,17 @@ class SnakeseeApp(App[None]):
         for status, table_id in TABLE_IDS.items():
             table = self.query_one(f"#{table_id}", DataTable)
             for key, label in COLUMNS[status]:
-                table.add_column(label, key=key)
+                table.add_column(label, key=key, width=FIXED_WIDTHS.get(key))
         self.query_one("#active", DataTable).focus()
         self._render_header()
         self.set_interval(1.0, self._tick)
         self._poll_loop()
+        self._resource_loop()
 
     def on_unmount(self) -> None:
         self._stopping = True
         self._wake.set()
+        self._resource_wake.set()
 
     # ----------------------------------------------------------- worker thread
     @work(thread=True, exclusive=True, group="poll", exit_on_error=False)
@@ -217,6 +261,88 @@ class SnakeseeApp(App[None]):
             self._wake.wait(self.interval)
             self._wake.clear()
 
+    @work(thread=True, exclusive=True, group="resources", exit_on_error=False)
+    def _resource_loop(self) -> None:
+        """Fetch memory usage: bjobs for active jobs, LSF reports for finished ones."""
+        worker = get_current_worker()
+        use_bjobs = self.bjobs_interval > 0 and bjobs_available()
+        last_bjobs = float("-inf")
+        attempts: dict[Path, tuple[int, float]] = {}
+        while not (worker.is_cancelled or self._stopping):
+            try:
+                active, finished = self.call_from_thread(self._resource_targets)
+            except RuntimeError:
+                return
+            results: dict[int, JobResources] = {}
+            now = time.monotonic()
+            due = now - last_bjobs >= self.bjobs_interval or self._force_bjobs
+            if use_bjobs and active and due:
+                self._force_bjobs = False
+                last_bjobs = now
+                by_id = query_bjobs(sorted({ext for _, ext in active}))
+                results.update((jobid, by_id[ext]) for jobid, ext in active if ext in by_id)
+            reads = 0
+            for jobid, path in finished:
+                if reads >= REPORT_READS_PER_TICK:
+                    break
+                n, last = attempts.get(path, (0, 0.0))
+                if n >= REPORT_MAX_ATTEMPTS or (n and now - last < REPORT_RETRY):
+                    continue
+                reads += 1
+                try:
+                    res = read_lsf_report(path)
+                except OSError:
+                    res = None
+                if res is None:  # not written yet, or no LSF report in it
+                    attempts[path] = (n + 1, now)
+                else:
+                    results[jobid] = res
+            if results:
+                try:
+                    self.call_from_thread(self._apply_resources, results)
+                except RuntimeError:
+                    return
+            self._resource_wake.wait(RESOURCE_TICK)
+            self._resource_wake.clear()
+
+    def _resource_targets(self) -> tuple[list[tuple[int, str]], list[tuple[int, Path]]]:
+        """(active jobs to query with bjobs, shown finished jobs whose report is still unread)."""
+        active: list[tuple[int, str]] = []
+        finished: list[Job] = []
+        for jobid, status in self._row_table.items():
+            job = self.jobs[jobid]
+            if status is JobStatus.ACTIVE:
+                if job.external_id:
+                    active.append((jobid, job.external_id))
+            elif job.cluster_log:
+                res = self.resources.get(jobid)
+                if res is None or not res.final:
+                    finished.append(job)
+        finished.sort(key=_end_key, reverse=True)
+        return active, [
+            (j.jobid, resolve(j.cluster_log or "", self.workflow_dir)) for j in finished
+        ]
+
+    def _apply_resources(self, results: dict[int, JobResources]) -> None:
+        now = time.time()
+        log_screen = self.screen if isinstance(self.screen, LogScreen) else None
+        for jobid, res in results.items():
+            job = self.jobs.get(jobid)
+            old = self.resources.get(jobid)
+            if job is None or (old is not None and old.final and not res.final):
+                continue
+            self.resources[jobid] = res
+            status = self._row_table.get(jobid)
+            if status is not None:
+                table = self.query_one(f"#{TABLE_IDS[status]}", DataTable)
+                before = job_cells(job, old, now)
+                for col, value in job_cells(job, res, now).items():
+                    if before.get(col) != value:
+                        table.update_cell(str(jobid), col, value)
+            if log_screen is not None and log_screen.job.jobid == jobid:
+                log_screen.update_resources(res)
+        self._render_header()
+
     # ------------------------------------------------------------- UI updates
     def _apply_update(self, update: Update) -> None:
         self.last_poll = time.time()
@@ -226,6 +352,7 @@ class SnakeseeApp(App[None]):
                 self.query_one(f"#{table_id}", DataTable).clear()
             self.jobs.clear()
             self._row_table.clear()
+            self.resources.clear()
         if update.log_path is not None:
             self.log_path = update.log_path
         if update.log_mtime is not None:
@@ -255,8 +382,9 @@ class SnakeseeApp(App[None]):
             if old is None:
                 new_rows[job.status].append(job)
             else:
-                previous = job_cells(self.jobs[job.jobid], now)
-                for col, value in job_cells(job, now).items():
+                res = self.resources.get(job.jobid)
+                previous = job_cells(self.jobs[job.jobid], res, now)
+                for col, value in job_cells(job, res, now).items():
                     if previous.get(col) != value:
                         tables[old].update_cell(key, col, value)
             self.jobs[job.jobid] = job
@@ -281,7 +409,7 @@ class SnakeseeApp(App[None]):
         columns = COLUMNS[status]
 
         def add(job: Job) -> None:
-            cells = job_cells(job, now)
+            cells = job_cells(job, self.resources.get(job.jobid), now)
             table.add_row(*(cells[c] for c, _ in columns), key=str(job.jobid))
             self._row_table[job.jobid] = status
 
@@ -359,6 +487,15 @@ class SnakeseeApp(App[None]):
         pct = f" ({100 * s.steps_done / s.steps_total:.0f}%)" if s.steps_total else ""
         text.append(f"  {s.steps_done}/{s.steps_total or '?'} steps{pct}")
         text.append(f"   active {s.n_active}", style="green")
+        stats = [
+            self.resources[j].stat
+            for j, st in self._row_table.items()
+            if st is JobStatus.ACTIVE and j in self.resources
+        ]
+        if stats:
+            n_run = sum(1 for x in stats if x == "RUN")
+            n_pend = sum(1 for x in stats if x == "PEND")
+            text.append(f" ({n_run} running, {n_pend} queued)", style="green")
         text.append(f"  failed {s.n_failed}", style="red" if s.n_failed else "")
         text.append(f"  done {s.n_done}")
         text.append(f"  pending {s.n_pending}", style="dim")
@@ -415,12 +552,21 @@ class SnakeseeApp(App[None]):
         self.query_one(f"#{pane}").focus()
 
     def action_refresh_now(self) -> None:
+        self._force_bjobs = True
         self._wake.set()
+        self._resource_wake.set()
 
     def action_open_log(self, kind: str | None = None) -> None:
         job = self._selected_job()
         if job is not None:
-            self.push_screen(LogScreen(job, self.workflow_dir, SourceKind(kind) if kind else None))
+            self.push_screen(
+                LogScreen(
+                    job,
+                    self.workflow_dir,
+                    SourceKind(kind) if kind else None,
+                    resources=self.resources.get(job.jobid),
+                )
+            )
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.action_open_log()

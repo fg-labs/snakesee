@@ -36,3 +36,14 @@ def fmt_time(ts: float | None, now: float | None = None) -> str:
 def truncate(text: str, width: int) -> str:
     """Shorten ``text`` to ``width`` characters with an ellipsis."""
     return text if len(text) <= width else text[: max(0, width - 1)] + "…"
+
+
+def fmt_mem(mb: float | None) -> str:
+    """``10912`` MB -> ``10.7G``; ``512`` -> ``512M``; ``None`` -> ``-``."""
+    if mb is None:
+        return "-"
+    if mb < 1024:
+        return f"{mb:.0f}M"
+    if mb < 1024 * 1024:
+        return f"{mb / 1024:.1f}G"
+    return f"{mb / 1024 / 1024:.1f}T"

@@ -35,6 +35,7 @@ snakesee/
 ├── tail.py         # FileTailer (incremental byte-offset reads), read_tail
 ├── monitor.py      # WorkflowMonitor: finds newest log, tails it, feeds parser (worker thread)
 ├── joblogs.py      # job log sources: .out / .err / bpeek / rule logs, fetching (worker thread)
+├── resources.py    # LSF memory/state: batched bjobs -json, .out report parsing (worker thread)
 └── tui/
     ├── app.py        # SnakeseeApp: polling worker, tables, header
     ├── log_screen.py # LogScreen: per-job log viewer with follow mode

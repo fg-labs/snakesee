@@ -22,6 +22,9 @@ from snakesee.joblogs import fetch
 from snakesee.joblogs import sources_for
 from snakesee.model import Job
 from snakesee.model import JobStatus
+from snakesee.resources import JobResources
+from snakesee.tui.format import fmt_duration
+from snakesee.tui.format import fmt_mem
 from snakesee.tui.widgets import PagerLog
 
 FILE_FOLLOW_INTERVAL = 2.0
@@ -35,6 +38,34 @@ def default_source(job: Job, sources: list[LogSource]) -> LogSource | None:
         if src.kind is preferred:
             return src
     return sources[0] if sources else None
+
+
+def resource_summary(res: JobResources) -> Text:
+    """One line: LSF state, memory vs request, run/CPU time, threads, termination reason."""
+    t = Text()
+    if res.stat:
+        t.append(f"LSF {res.stat}  ", style="green" if res.stat == "RUN" else "")
+    mem = f"max mem {fmt_mem(res.max_mem_mb)}"
+    if res.mem_limit_mb:
+        mem += f" of {fmt_mem(res.mem_limit_mb)}"
+    frac = res.mem_fraction
+    style = "bold red" if frac and frac >= 0.9 else "yellow" if frac and frac >= 0.75 else ""
+    t.append(mem, style=style)
+    if frac is not None:
+        t.append(f" ({100 * frac:.0f}%)", style=style)
+    if res.avg_mem_mb is not None:
+        t.append(f"  avg {fmt_mem(res.avg_mem_mb)}")
+    if res.run_time_s is not None:
+        t.append(f"  run {fmt_duration(res.run_time_s)}")
+    if res.cpu_time_s is not None:
+        t.append(f"  cpu {fmt_duration(res.cpu_time_s)}")
+    if res.max_threads is not None:
+        t.append(f"  threads {res.max_threads}")
+    if not res.final:
+        t.append("  (live)", style="dim")
+    if res.lsf_note:
+        t.append(f"\n{res.lsf_note}", style="bold red")
+    return t
 
 
 class LogScreen(Screen[None]):
@@ -55,9 +86,16 @@ class LogScreen(Screen[None]):
         Binding("f", "toggle_follow", "Follow"),
     ]
 
-    def __init__(self, job: Job, workflow_dir: Path, kind: SourceKind | None = None) -> None:
+    def __init__(
+        self,
+        job: Job,
+        workflow_dir: Path,
+        kind: SourceKind | None = None,
+        resources: JobResources | None = None,
+    ) -> None:
         super().__init__()
         self.job = job
+        self.resources = resources
         self.workflow_dir = workflow_dir
         self.sources = sources_for(job, workflow_dir)
         self.source: LogSource | None = None
@@ -174,6 +212,11 @@ class LogScreen(Screen[None]):
         else:
             self._render_header()
 
+    def update_resources(self, resources: JobResources) -> None:
+        """Called by the app when new bjobs / LSF report data arrives for this job."""
+        self.resources = resources
+        self._render_header()
+
     # ---------------------------------------------------------------- header
     def _render_header(self) -> None:
         job = self.job
@@ -189,6 +232,10 @@ class LogScreen(Screen[None]):
             t.append(f"  attempt {job.attempts}", style="yellow")
         if job.error_message:
             t.append(f"\n{job.error_message}", style="red")
+        res = self.resources
+        if res is not None:
+            t.append("\n")
+            t.append_text(resource_summary(res))
         t.append("\n")
         for src in self.sources:
             style = "reverse bold" if src == self.source else "dim"

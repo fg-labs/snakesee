@@ -1,0 +1,22 @@
+Sender: LSF System <lsfadmin@node9>
+Subject: Job 101867877: <snakejob.run_ase_model_part1.3555.sh> in cluster <cluster1> Exited
+
+------------------------------------------------------------
+# LSBATCH: User input
+/data/proj/.snakemake/tmp.abc/snakejob.run_ase_model_part1.3555.sh
+------------------------------------------------------------
+
+TERM_MEMLIMIT: job killed after reaching LSF memory usage limit.
+Exited with exit code 137.
+
+Resource usage summary:
+
+    CPU time :                                   1430.11 sec.
+    Max Memory :                                 23552 MB
+    Average Memory :                             15000.00 MB
+    Total Requested Memory :                     24000.00 MB
+    Max Threads :                                12
+    Run time :                                   1400 sec.
+
+The output (if any) follows:
+

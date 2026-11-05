@@ -23,6 +23,7 @@ snakesee                      # workflow in the current directory, following the
 snakesee path/to/workflow     # another workflow directory
 snakesee path/to/workflow/.snakemake/log/2026-11-05T121544.990726.snakemake.log   # one specific run
 snakesee -n 5                 # poll every 5 seconds (default 2)
+snakesee --bjobs-interval 120 # query LSF for running jobs' memory every 2 min (default 60; 0 = off)
 ```
 
 ### Keys
@@ -70,6 +71,18 @@ Only the main Snakemake log in `.snakemake/log/`:
   The stderr log is the same path with `.err` in place of `.out`.
 - `Finished job N.` / `Finished jobid: N`, `Error in rule …:` blocks, `N of M steps`, `Job stats`,
   and the end-of-run messages.
+
+### Memory use (LSF)
+
+- **Running jobs:** a single batched `bjobs -o "jobid stat max_mem avg_mem memlimit run_time" -json`
+  call for all active jobs, every `--bjobs-interval` seconds, on a background thread. This also
+  gives the LSF state, so Active shows `PEND` / `RUN`, and the header shows running vs queued.
+- **Finished and failed jobs:** the "Resource usage summary" LSF writes at the top of each job's
+  `.out`. Each file is read once, and only for jobs shown in the tables. Missing files are retried
+  for a few minutes, since LSF writes them at job end.
+- Tables show **Max mem** and **% req**: yellow at 75% or more of the requested memory, red at 90%
+  or more. Failed jobs show LSF's termination reason (e.g. `TERM_MEMLIMIT`) when there is one.
+- The log viewer header shows max/avg memory, run and CPU time, and threads.
 
 ### Pending jobs and the Rules view
 

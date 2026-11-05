@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from textual.pilot import Pilot
 from textual.widgets import DataTable
 from textual.widgets import Log
@@ -13,6 +14,8 @@ from textual.widgets import TabbedContent
 from snakesee.monitor import Update
 from snakesee.tui.app import SnakeseeApp
 from snakesee.tui.log_screen import LogScreen
+
+from .conftest import DATA
 
 
 async def wait_for(pilot: Pilot[None], cond: Callable[[], bool], timeout: float = 5.0) -> None:
@@ -195,3 +198,52 @@ async def test_rules_tab(workflow: Path) -> None:
         assert "collect_results" in graph and "1 pending" in graph
         await pilot.press("enter", "o")  # no job selected on the Rules tab: nothing opens
         assert not isinstance(app.screen, LogScreen)
+
+
+def cell(app: SnakeseeApp, table_id: str, jobid: int, col: str) -> str:
+    return str(app.query_one(f"#{table_id}", DataTable).get_cell(str(jobid), col))
+
+
+async def test_memory_columns(
+    workflow: Path, fake_bjobs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import snakesee.tui.app as app_module
+
+    monkeypatch.setattr(app_module, "RESOURCE_TICK", 0.05)
+    app = SnakeseeApp(workflow)
+    async with app.run_test(size=(200, 40)) as pilot:
+        await wait_for(pilot, lambda: rows(app, "failed") == 2)
+        # Finished jobs: LSF reports in the .out files (written after the jobs appear).
+        for jobid, fixture in [(3233, "lsf_done.out"), (3555, "lsf_memlimit.out")]:
+            out = Path(app.jobs[jobid].cluster_log or "")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text((DATA / fixture).read_text())
+        app.action_refresh_now()
+        await wait_for(pilot, lambda: cell(app, "done", 3233, "mem") == "10.7G")
+        assert cell(app, "done", 3233, "pct") == "45%"
+        assert cell(app, "done", 3233, "runtime") == "8m18s"
+        await wait_for(pilot, lambda: cell(app, "failed", 3555, "message").startswith("TERM_"))
+        assert cell(app, "failed", 3555, "pct") == "98%"
+        # Active jobs: batched bjobs. 101867799 is odd -> RUN; 101867800 even -> PEND.
+        await wait_for(pilot, lambda: cell(app, "active", 3481, "state") == "RUN")
+        assert cell(app, "active", 3481, "mem") == "21.5G"
+        assert cell(app, "active", 3481, "pct") == "93%"
+        assert cell(app, "active", 3775, "state") == "PEND"
+        assert "(1 running, 1 queued)" in str(app.query_one("#header").render())
+        # The log viewer header shows the summary.
+        await pilot.press("2")
+        app.query_one("#failed", DataTable).move_cursor(
+            row=app.query_one("#failed", DataTable).get_row_index("3555")
+        )
+        await pilot.press("o")
+        header = str(app.screen.query_one("#log-header").render())
+        assert "max mem 23.0G of 23.4G (98%)" in header
+        assert "TERM_MEMLIMIT" in header
+
+
+async def test_bjobs_disabled(workflow: Path, fake_bjobs: Path) -> None:
+    app = SnakeseeApp(workflow, bjobs_interval=0)
+    async with app.run_test(size=(200, 40)) as pilot:
+        await wait_for(pilot, lambda: rows(app, "active") == 2)
+        await pilot.pause(0.3)
+        assert cell(app, "active", 3481, "state") == "-"
