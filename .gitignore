@@ -135,3 +135,6 @@ dmypy.json
 # pixi
 .pixi/
 pixi.lock
+
+# test fixtures are real Snakemake logs
+!tests/data/*.log

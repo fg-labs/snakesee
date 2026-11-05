@@ -1,99 +1,54 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
-## Project Overview
+## Project
 
-snakesee is a terminal UI for monitoring Snakemake workflows. It passively reads from `.snakemake/` directories without requiring special flags when running Snakemake. Key features include real-time monitoring, historical browsing, time estimation from historical data, and vim-style keyboard controls.
+snakesee is a terminal UI (Textual) for monitoring running Snakemake workflows, especially on LSF.
+It is a deliberate ground-up rewrite of fg-labs/snakesee (old code is in git history). The previous
+codebase was abandoned because it blocked the UI thread with full rescans on every refresh.
 
-## Build, Test, and Lint Commands
+## Non-negotiable design rules
 
-**Using pixi (recommended):**
-```bash
-pixi run install-dev    # Install development environment
-pixi run check          # Run all checks (format, lint, type, tests)
-pixi run fix            # Auto-fix linting issues
-pixi run test           # Run unit tests only
-pixi run docs           # Build documentation
-```
+1. **The UI thread never does I/O.** No file reads, `stat`, `scandir` or subprocesses in Textual
+   event handlers, timers or actions. Do I/O in `@work(thread=True)` workers and hand plain data
+   back with `call_from_thread`. A test (`test_ui_stays_responsive_when_filesystem_is_slow`) guards
+   this.
+2. **Polling cost must scale with new data, not history.** The log is tailed by byte offset
+   (`tail.FileTailer`) and parsed incrementally (`parser.LogParser`). Never re-read the whole log,
+   scan `.snakemake/metadata`, or stat workflow input files on a poll.
+3. **Ctrl-Z must keep working.** It is bound to Textual's `suspend_process` with `priority=True`.
+   Don't add bindings or modal flows that swallow it.
+4. **Keep DataTables small and diff-updated.** Update changed cells only. Finished and failed tables
+   are capped (`ROW_LIMIT`). `remove_row` is O(rows), so rebuild instead of removing many rows.
 
-**Using uv:**
-```bash
-uv sync --group dev --group docs   # Install dependencies
-uv run poe check-all               # Run all checks
-uv run poe fix-all                 # Auto-fix issues
-uv run pytest                      # Run tests
-uv run pytest tests/integration -v --no-cov  # Integration tests (requires Snakemake 9+)
-```
-
-**Running a single test:**
-```bash
-uv run pytest tests/test_models.py::TestJobInfo::test_specific_method -v
-```
-
-## Architecture
+## Layout
 
 ```text
 snakesee/
-├── cli.py              # CLI entry point (defopt-based)
-├── models.py           # Core data models (JobInfo, WorkflowProgress)
-├── estimator.py        # Time estimation orchestration
-├── events.py           # Event file I/O and streaming
-├── parser/             # Log parsing
-│   ├── core.py         # Main parsing orchestration
-│   ├── line_parser.py  # Individual log line parsing
-│   └── patterns.py     # Regex patterns
-├── estimation/         # Time estimation
-│   ├── estimator.py    # TimeEstimator main class
-│   ├── data_loader.py  # Load timing data from metadata/events
-│   └── pending_inferrer.py  # Infer pending rule distribution
-├── plugins/            # Tool-specific progress plugins
-│   ├── base.py         # ToolProgressPlugin base class
-│   └── registry.py     # Plugin discovery
-├── state/              # State management
-│   ├── workflow_state.py  # Top-level state container
-│   ├── job_registry.py    # Job state tracking
-│   └── clock.py           # Injectable clock for testing
+├── cli.py          # argparse entry point; imports Textual lazily
+├── model.py        # Job, JobStatus, RunStatus, RunSummary
+├── parser.py       # LogParser: incremental, pure (no I/O), line-at-a-time
+├── tail.py         # FileTailer (incremental byte-offset reads), read_tail
+├── monitor.py      # WorkflowMonitor: finds newest log, tails it, feeds parser (worker thread)
+├── joblogs.py      # job log sources: .out / .err / bpeek / rule logs, fetching (worker thread)
 └── tui/
-    ├── app.py          # SnakeseeApp - main Textual App class
-    ├── app.tcss        # CSS layout and theming
-    ├── data_source.py  # WorkflowDataSource - pure-data layer
-    ├── renderables.py  # Rich renderables (header, progress bar, footer)
-    ├── tables.py       # DataTable row builders
-    ├── screens.py      # Modal screens (help, easter egg, job log)
-    └── accessibility.py # Colorblind-accessible rendering helpers
+    ├── app.py        # SnakeseeApp: polling worker, tables, header
+    ├── log_screen.py # LogScreen: per-job log viewer with follow mode
+    └── format.py     # duration/time formatting
 ```
 
-**Data flow:** `.snakemake/` directory → parser module → state module → estimation module → tui rendering
+## Commands
 
-## Key Patterns
-
-**Dependency injection for testing:** Use `Clock` protocol for deterministic time:
-```python
-from snakesee.state import FrozenClock, set_clock
-clock = FrozenClock(1000.0)
-set_clock(clock)
-clock.advance(60.0)
-```
-
-**Deferred imports:** Many modules import inside functions to break circular dependencies. This is intentional—do not consolidate into top-level imports.
-
-**Plugin discovery order:** Built-in → User plugins (`~/.snakesee/plugins/`) → Entry-point plugins
-
-**Frozen dataclasses:** Core models use `@dataclass(frozen=True, slots=True)` for immutability.
-
-## Code Style
-
-- **Line length:** 100 characters
-- **Type hints:** Required on all functions (mypy strict mode)
-- **Imports:** Single-line (ruff isort)
-- **Commit messages:** Conventional Commits (`feat:`, `fix:`, `docs:`, etc.)
-
-## Logger Plugin
-
-The `snakemake-logger-plugin-snakesee/` subdirectory contains an optional Snakemake 9+ logger plugin for real-time event streaming (vs log polling). Develop separately:
 ```bash
-cd snakemake-logger-plugin-snakesee
-pip install -e .
-pytest tests/
+uv sync
+uv run pytest
+uv run ruff format && uv run ruff check
+uv run mypy          # strict
 ```
+
+## Style
+
+- Line length 100, single-line imports (ruff isort), full type hints (mypy strict).
+- Conventional Commits (`feat:`, `fix:`, `perf:`, `docs:`, ...).
+- Parser test fixtures live in `tests/data/`. Base new fixtures on real Snakemake logs, anonymized.

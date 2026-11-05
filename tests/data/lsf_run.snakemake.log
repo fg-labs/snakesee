@@ -1,0 +1,113 @@
+
+SNAKEMAKE
+=========
+  Date: 2026-11-05 12:15:44
+  Workflow ID: 6aa74525-c9a7-4a35-91af-0aa2773b766d
+  Host: node1
+  User: user
+  Snakemake version: 9.26.1
+  Python version: 3.13.5
+  Command: /data/proj/.venv/bin/snakemake -c 100 -j 100 --executor lsf --default-resources lsf_queue=normal mem_mb=4000
+  Snakefile: /data/proj/Snakefile
+  Working directory: /data/proj
+
+Building DAG of jobs...
+Updating checkpoint dependencies.
+Using shell: /bin/bash
+Provided remote nodes: 100
+Job stats:
+job                          count
+-------------------------  -------
+run_ase_model_part1              2
+run_total_model                  3
+collect_results                  1
+total                            6
+
+Select jobs to execute...
+Execute 5 jobs...
+[Thu Nov  5 12:16:00 2026]
+rule run_total_model:
+    input: processed/Adipose/allele_unique_reads.parquet, processed/Adipose/chromosome_chunks/11.2.genes.txt
+    output: processed/Adipose/buffering/11.2.run_total_model.nc
+    jobid: 3233
+    reason: Missing output files: processed/Adipose/buffering/11.2.run_total_model.nc
+    wildcards: tissue_real=Adipose, chromosome=11, chunk_num=2
+    threads: 4
+    resources: tmpdir=<TBD>, mem_mb=24000, mem=24 GB, lsf_queue=normal
+No wall time information given. This might or might not work on your cluster. If not, specify the resource runtime in your rule or as a reasonable default via --default-resources.
+Job 3233 has been submitted with LSF jobid 101867798 (log: /data/proj/.snakemake/lsf_logs/rule_run_total_model/tissue_real=Adipose..chromosome=11..chunk_num=2/45902017-3b80-4b48-bba3-999360bbce28.out).
+[Thu Nov  5 12:16:01 2026]
+rule run_total_model:
+    input: processed/Adipose/allele_unique_reads.parquet, processed/Adipose/chromosome_chunks/10.9.genes.txt
+    output: processed/Adipose/buffering/10.9.run_total_model.nc
+    jobid: 3481
+    reason: Missing output files: processed/Adipose/buffering/10.9.run_total_model.nc
+    wildcards: tissue_real=Adipose, chromosome=10, chunk_num=9
+    threads: 4
+    resources: tmpdir=<TBD>, mem_mb=24000, mem=24 GB, lsf_queue=normal
+No wall time information given. This might or might not work on your cluster. If not, specify the resource runtime in your rule or as a reasonable default via --default-resources.
+Job 3481 has been submitted with LSF jobid 101867799 (log: /data/proj/.snakemake/lsf_logs/rule_run_total_model/tissue_real=Adipose..chromosome=10..chunk_num=9/45902017-3b80-4b48-bba3-999360bbce28.out).
+[Thu Nov  5 12:16:02 2026]
+rule run_ase_model_part1:
+    input: processed/Adipose/allele_unique_reads.parquet, processed/Adipose/chromosome_chunks/2.5.genes.txt
+    output: processed/Adipose/buffering/2.5.run_ase_model_part1.nc
+    jobid: 3775
+    reason: Missing output files: processed/Adipose/buffering/2.5.run_ase_model_part1.nc
+    wildcards: tissue_real=Adipose, chromosome=2, chunk_num=5
+    threads: 4
+    resources: tmpdir=<TBD>, mem_mb=24000, mem=24 GB, lsf_queue=normal
+No wall time information given. This might or might not work on your cluster. If not, specify the resource runtime in your rule or as a reasonable default via --default-resources.
+Job 3775 has been submitted with LSF jobid 101867800 (log: /data/proj/.snakemake/lsf_logs/rule_run_ase_model_part1/tissue_real=Adipose..chromosome=2..chunk_num=5/45902017-3b80-4b48-bba3-999360bbce28.out).
+[Thu Nov  5 12:16:03 2026]
+rule run_total_model:
+    input: processed/Adipose/allele_unique_reads.parquet, processed/Adipose/chromosome_chunks/6.13.genes.txt
+    output: processed/Adipose/buffering/6.13.run_total_model.nc
+    jobid: 3709
+    reason: Missing output files: processed/Adipose/buffering/6.13.run_total_model.nc
+    wildcards: tissue_real=Adipose, chromosome=6, chunk_num=13
+    threads: 4
+    resources: tmpdir=<TBD>, mem_mb=24000, mem=24 GB, lsf_queue=normal
+No wall time information given. This might or might not work on your cluster. If not, specify the resource runtime in your rule or as a reasonable default via --default-resources.
+Job 3709 has been submitted with LSF jobid 101867878 (log: /data/proj/.snakemake/lsf_logs/rule_run_total_model/tissue_real=Adipose..chromosome=6..chunk_num=13/45902017-3b80-4b48-bba3-999360bbce28.out).
+[Thu Nov  5 12:16:04 2026]
+rule run_ase_model_part1:
+    input: processed/Adipose/allele_unique_reads.parquet, processed/Adipose/chromosome_chunks/4.3.genes.txt
+    output: processed/Adipose/buffering/4.3.run_ase_model_part1.nc
+    jobid: 3555
+    reason: Missing output files: processed/Adipose/buffering/4.3.run_ase_model_part1.nc
+    wildcards: tissue_real=Adipose, chromosome=4, chunk_num=3
+    threads: 4
+    resources: tmpdir=<TBD>, mem_mb=24000, mem=24 GB, lsf_queue=normal
+No wall time information given. This might or might not work on your cluster. If not, specify the resource runtime in your rule or as a reasonable default via --default-resources.
+Job 3555 has been submitted with LSF jobid 101867877 (log: /data/proj/.snakemake/lsf_logs/rule_run_ase_model_part1/tissue_real=Adipose..chromosome=4..chunk_num=3/45902017-3b80-4b48-bba3-999360bbce28.out).
+[Thu Nov  5 12:30:00 2026]
+Finished jobid: 3233 (Rule: run_total_model)
+1 of 6 steps (17%) done
+[Thu Nov  5 12:39:35 2026]
+Error in rule run_ase_model_part1:
+    message: LSF-job '101867877' failed, LSF status is: 'EXIT'For further error details see the cluster/cloud log and the log files of the involved rule(s).
+    jobid: 3555
+    input: processed/Adipose/allele_unique_reads.parquet, processed/Adipose/chromosome_chunks/4.3.genes.txt
+    output: processed/Adipose/buffering/4.3.run_ase_model_part1.nc
+    log: /data/proj/.snakemake/lsf_logs/rule_run_ase_model_part1/tissue_real=Adipose..chromosome=4..chunk_num=3/45902017-3b80-4b48-bba3-999360bbce28.out (check log file(s) for error details)
+    shell:
+        python scripts/run_ase_model_part1.py --tissue Adipose
+        (command exited with non-zero exit code)
+    external_jobid: 101867877
+[Thu Nov  5 12:39:35 2026]
+Error in rule run_total_model:
+    message: LSF-job '101867878' failed, LSF status is: 'EXIT'For further error details see the cluster/cloud log and the log files of the involved rule(s).
+    jobid: 3709
+    input: processed/Adipose/allele_unique_reads.parquet, processed/Adipose/chromosome_chunks/6.13.genes.txt
+    output: processed/Adipose/buffering/6.13.run_total_model.nc
+    log: /data/proj/.snakemake/lsf_logs/rule_run_total_model/tissue_real=Adipose..chromosome=6..chunk_num=13/45902017-3b80-4b48-bba3-999360bbce28.out (check log file(s) for error details)
+    shell:
+        python scripts/run_total_model.py --tissue Adipose
+        (command exited with non-zero exit code)
+    external_jobid: 101867878
+Shutting down, this might take some time.
+Exiting because a job execution failed. Look above for error messages
+Complete log(s): /data/proj/.snakemake/log/2026-11-05T121544.990726.snakemake.log
+Elapsed time: 0:24:22.456115
+WorkflowError:
+At least one job did not complete successfully.

@@ -1,94 +1,25 @@
-name: Static Analysis, Unit Tests, and Documentation
+name: tests
 
 on:
   push:
-    branches:
-      - "**"
-    tags:
-      - "!**"
-  workflow_call:
-
-env:
-  UV_VERSION: 0.8.22
+  pull_request:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
-  Tests:
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        PYTHON_VERSION: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
         with:
-          persist-credentials: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          version: "${{ env.UV_VERSION }}"
-          python-version: "${{ matrix.PYTHON_VERSION }}"
-          enable-cache: true
-          cache-suffix: "${{ matrix.PYTHON_VERSION }}"
-
-      - name: Install dependencies
-        run: |
-          uv sync --group dev --group docs
-
-      - name: Test the library
-        run: |
-          uv run poe check-all
-
-      - name: Run docs
-        run: |
-          set -euo pipefail
-          uv run poe build-docs
-
-      - name: Upload code coverage
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: fg-labs/snakesee
-
-  # Reproduce the exact Read the Docs build so a pyproject.toml that the
-  # RTD-pinned uv cannot parse fails CI instead of only failing the RTD build.
-  # The main Tests job uses a newer uv (UV_VERSION above) that tolerates more
-  # syntax, so it cannot catch incompatibilities with the older uv RTD pins.
-  # The uv version is read straight from .readthedocs.yml so this job never
-  # drifts from the real build.
-  ReadTheDocs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.11"
-
-      - name: Extract uv version pinned by Read the Docs
-        id: rtd
-        run: |
-          set -euo pipefail
-          uv_version="$(sed -nE 's/.*uv==([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' .readthedocs.yml | head -1)"
-          if [ -z "${uv_version}" ]; then
-            echo "Could not find a pinned uv version (uv==X.Y.Z) in .readthedocs.yml" >&2
-            exit 1
-          fi
-          echo "Read the Docs pins uv==${uv_version}"
-          echo "uv_version=${uv_version}" >> "${GITHUB_OUTPUT}"
-
-      - name: Reproduce the Read the Docs install
-        run: |
-          set -euo pipefail
-          python -m venv .rtd-venv
-          .rtd-venv/bin/pip install --upgrade --no-cache-dir pip setuptools
-          .rtd-venv/bin/pip install "uv==${{ steps.rtd.outputs.uv_version }}"
-          VIRTUAL_ENV=.rtd-venv .rtd-venv/bin/uv pip install --group docs .
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync
+      - run: uv run ruff format --check
+      - run: uv run ruff check
+      - run: uv run mypy
+      - run: uv run pytest
